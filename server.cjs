@@ -1,382 +1,213 @@
+// =========================
+//  SERVER FOR RESTAURANT APP
+//  Node.js + Express + better-sqlite3
+// =========================
+
 const express = require("express");
 const path = require("path");
 const Database = require("better-sqlite3");
 
 const app = express();
-const dbPath = process.env.SQLITE_PATH || path.join(__dirname, "stats.sqlite");
+
+// === DB PATH (Railway uses /mnt/data) ===
+const dbPath =
+  process.env.SQLITE_PATH || path.join(__dirname, "stats.sqlite");
+
 const db = new Database(dbPath);
+
+// ======================================
+//          INIT TABLES
+// ======================================
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS daily_stats (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT UNIQUE,
+  revenue REAL,
+  guests INTEGER,
+  checks INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS waiters_stats (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT,
+  waiter TEXT,
+  revenue REAL,
+  guests INTEGER,
+  checks INTEGER,
+  dishes INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS plan_stats (
+  year INTEGER,
+  month INTEGER,
+  plan_value REAL,
+  UNIQUE(year, month)
+);
+`);
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-// ============================
-// ИНИЦИАЛИЗАЦИЯ ТАБЛИЦ
-// ============================
-db.exec(`
-  CREATE TABLE IF NOT EXISTS daily_stats (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date TEXT UNIQUE,
-    revenue REAL,
-    guests INTEGER,
-    checks INTEGER
-  );
 
-  CREATE TABLE IF NOT EXISTS waiters_stats (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date TEXT,
-    waiter TEXT,
-    revenue REAL,
-    guests INTEGER,
-    checks INTEGER,
-    dishes INTEGER
-  );
+// =======================================================
+//                  ADD DAILY STATS
+// =======================================================
 
-  CREATE TABLE IF NOT EXISTS plan_stats (
-    year INTEGER,
-    month INTEGER,
-    plan_value REAL,
-    UNIQUE(year, month)
-  );
-`);
+app.post("/api/add-day", (req, res) => {
+  const { date, revenue, guests, checks } = req.body;
 
-// ======================================================================
-//                             ДОБАВЛЕНИЕ ДАННЫХ
-// ======================================================================
-
-// *** Общие показатели ***
-app.post("/add", (req, res) => {
   try {
-    const { date, revenue, guests, checks } = req.body;
-
     db.prepare(`
-      INSERT INTO daily_stats (date, revenue, guests, checks)
+      INSERT OR REPLACE INTO daily_stats (date, revenue, guests, checks)
       VALUES (?, ?, ?, ?)
-      ON CONFLICT(date) DO UPDATE SET
-        revenue=excluded.revenue,
-        guests=excluded.guests,
-        checks=excluded.checks
     `).run(date, revenue, guests, checks);
 
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.json({ ok: true });
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
   }
 });
 
-// *** Официанты ***
-app.post("/add-waiters", (req, res) => {
+
+// =======================================================
+//                  ADD WAITER STATS
+// =======================================================
+
+app.post("/api/add-waiter", (req, res) => {
+  const { date, waiter, revenue, guests, checks, dishes } = req.body;
+
   try {
-    const { date, waiters } = req.body;
-
-    db.prepare(`DELETE FROM waiters_stats WHERE date = ?`).run(date);
-
-    const stmt = db.prepare(`
+    db.prepare(`
       INSERT INTO waiters_stats (date, waiter, revenue, guests, checks, dishes)
       VALUES (?, ?, ?, ?, ?, ?)
-    `);
+    `).run(date, waiter, revenue, guests, checks, dishes);
 
-    const insertMany = db.transaction((items) => {
-      for (const w of items) {
-        stmt.run(date, w.name, w.revenue, w.guests, w.checks, w.dishes);
-      }
-    });
-
-    insertMany(waiters);
-
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.json({ ok: true });
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
   }
 });
 
-// ======================================================================
-//                                  ПЛАН
-// ======================================================================
 
-// Установить план
-app.post("/plan/set", (req, res) => {
+// =======================================================
+//                SAVE MONTH PLAN
+// =======================================================
+
+app.post("/api/save-plan", (req, res) => {
+  const { year, month, plan } = req.body;
+
   try {
-    const { year, month, plan } = req.body;
-
     db.prepare(`
-      INSERT INTO plan_stats (year, month, plan_value)
+      INSERT OR REPLACE INTO plan_stats (year, month, plan_value)
       VALUES (?, ?, ?)
-      ON CONFLICT(year, month) DO UPDATE SET plan_value = excluded.plan_value
     `).run(year, month, plan);
 
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.json({ ok: true });
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
   }
 });
 
-// Получить план
-app.get("/plan/get", (req, res) => {
-  try {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = now.getMonth() + 1;
 
-    const row = db
-      .prepare(`SELECT plan_value FROM plan_stats WHERE year=? AND month=?`)
-      .get(y, m);
+// =======================================================
+//                GET PLAN FOR MONTH
+// =======================================================
 
-    res.json({ plan: row ? row.plan_value : 0 });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+app.get("/api/plan", (req, res) => {
+  const { year, month } = req.query;
+
+  const row = db.prepare(`
+    SELECT plan_value FROM plan_stats WHERE year = ? AND month = ?
+  `).get(year, month);
+
+  res.json({ plan: row ? row.plan_value : null });
 });
 
-// ======================================================================
-//                        ОФИЦИАНТЫ — НЕДЕЛЬНЫЙ ОТЧЁТ
-// ======================================================================
-function getWeekIndex(day) {
-  return Math.min(Math.floor((day - 1) / 7), 4); // 0..4
+
+// =======================================================
+//                REPORT: DAILY STATS (MONTH)
+// =======================================================
+
+app.get("/api/month-stats", (req, res) => {
+  const { year, month } = req.query;
+
+  const monthStr = `${year}-${String(month).padStart(2, "0")}`;
+
+  const rows = db.prepare(`
+    SELECT * FROM daily_stats
+    WHERE date LIKE ?
+    ORDER BY date
+  `).all(`${monthStr}%`);
+
+  res.json(rows);
+});
+
+
+// =======================================================
+//           REPORT: WAITER METRICS (WEEK / MONTH)
+// =======================================================
+
+function getDateRange(period, year, month) {
+  const now = new Date();
+  const y = Number(year);
+  const m = Number(month) - 1;
+
+  if (period === "month") {
+    const start = new Date(y, m, 1);
+    const end = new Date(y, m + 1, 1);
+    return { start, end };
+  }
+
+  if (period === "week") {
+    const today = new Date();
+    const first = new Date(today.setDate(today.getDate() - today.getDay() + 1));
+    const last = new Date(today.setDate(first.getDate() + 6));
+    return { start: first, end: last };
+  }
+
+  return null;
 }
 
-function computeWaiterMetrics(rows) {
-  const r = rows.reduce(
-    (acc, x) => {
-      acc.revenue += x.revenue || 0;
-      acc.guests += x.guests || 0;
-      acc.checks += x.checks || 0;
-      acc.dishes += x.dishes || 0;
-      return acc;
-    },
-    { revenue: 0, guests: 0, checks: 0, dishes: 0 }
-  );
 
-  return {
-    revenue: r.revenue,
-    guests: r.guests,
-    checks: r.checks,
-    dishes: r.dishes,
-    avgCheck: r.checks ? r.revenue / r.checks : 0,
-    bkv: r.checks ? r.dishes / r.checks : 0,
-    avgGuest: r.checks ? r.guests / r.checks : 0,
-  };
-}
+// API: waiter stats
+app.get("/api/waiters", (req, res) => {
+  const { year, month, period } = req.query;
 
-app.get("/report/waiters-weekly", (req, res) => {
-  try {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = now.getMonth() + 1;
-
-    const rows = db
-      .prepare(`
-        SELECT * FROM waiters_stats
-        WHERE strftime('%Y', date)=? AND strftime('%m', date)=?
-      `)
-      .all(String(y), String(m).padStart(2, "0"));
-
-    const weeks = [ {}, {}, {}, {}, {} ];
-
-    for (const r of rows) {
-      const d = new Date(r.date).getDate();
-      const w = getWeekIndex(d);
-
-      if (!weeks[w][r.waiter]) weeks[w][r.waiter] = [];
-      weeks[w][r.waiter].push(r);
-    }
-
-    const result = weeks.map((wk, i) => {
-      const arr = [];
-      for (const waiter of Object.keys(wk)) {
-        arr.push({ name: waiter, ...computeWaiterMetrics(wk[waiter]) });
-      }
-      return {
-        week: `${i * 7 + 1}-${i * 7 + 7}`,
-        waiters: arr
-      };
-    });
-
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+  const range = getDateRange(period, year, month);
+  if (!range) {
+    return res.json({ error: "Invalid period" });
   }
+
+  const startStr = range.start.toISOString().slice(0, 10);
+  const endStr = range.end.toISOString().slice(0, 10);
+
+  const rows = db.prepare(`
+    SELECT waiter,
+           SUM(revenue) AS total_revenue,
+           SUM(guests) AS total_guests,
+           SUM(checks) AS total_checks,
+           SUM(dishes) AS total_dishes
+    FROM waiters_stats
+    WHERE date >= ? AND date <= ?
+    GROUP BY waiter
+  `).all(startStr, endStr);
+
+  // calculate metrics
+  rows.forEach(r => {
+    r.average_check = r.total_checks ? (r.total_revenue / r.total_checks) : 0;
+    r.fill = r.total_checks ? (r.total_dishes / r.total_checks) : 0;
+  });
+
+  res.json(rows);
 });
 
-// ======================================================================
-//                           МЕСЯЧНЫЙ ОТЧЁТ ОФИЦИАНТОВ
-// ======================================================================
-app.get("/report/waiters-monthly", (req, res) => {
-  try {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = now.getMonth() + 1;
 
-    const rows = db
-      .prepare(`
-        SELECT * FROM waiters_stats
-        WHERE strftime('%Y', date)=? AND strftime('%m', date)=?
-      `)
-      .all(String(y), String(m).padStart(2, "0"));
+// =======================================================
+//                START SERVER
+// =======================================================
 
-    const map = {};
-
-    for (const r of rows) {
-      if (!map[r.waiter]) map[r.waiter] = [];
-      map[r.waiter].push(r);
-    }
-
-    const result = Object.keys(map).map((name) => ({
-      name,
-      ...computeWaiterMetrics(map[name]),
-    }));
-
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log("🚀 Server started on port", PORT);
 });
-
-// ======================================================================
-//                        СРАВНЕНИЕ НЕДЕЛЯ К НЕДЕЛЕ
-// ======================================================================
-app.get("/report/waiters-weekly-compare", (req, res) => {
-  try {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = now.getMonth() + 1;
-
-    const rows = db
-      .prepare(`
-        SELECT * FROM waiters_stats
-        WHERE strftime('%Y', date)=? AND strftime('%m', date)=?
-      `)
-      .all(String(y), String(m).padStart(2, "0"));
-
-    const weeks = [ {}, {}, {}, {}, {} ];
-
-    for (const r of rows) {
-      const d = new Date(r.date).getDate();
-      const w = getWeekIndex(d);
-
-      if (!weeks[w][r.waiter]) weeks[w][r.waiter] = [];
-      weeks[w][r.waiter].push(r);
-    }
-
-    const result = [];
-
-    for (let w = 1; w < 5; w++) {
-      const curr = weeks[w];
-      const prev = weeks[w - 1];
-
-      const row = [];
-
-      for (const waiter of Object.keys(curr)) {
-        const cur = computeWaiterMetrics(curr[waiter]);
-        const prv = prev[waiter] ? computeWaiterMetrics(prev[waiter]) : {
-          revenue: 0, guests: 0, checks: 0, dishes: 0,
-          avgCheck: 0, bkv: 0, avgGuest: 0
-        };
-
-        const diff = {
-          revenue: cur.revenue - prv.revenue,
-          guests: cur.guests - prv.guests,
-          checks: cur.checks - prv.checks,
-          dishes: cur.dishes - prv.dishes,
-          avgCheck: cur.avgCheck - prv.avgCheck,
-          bkv: cur.bkv - prv.bkv,
-          avgGuest: cur.avgGuest - prv.avgGuest,
-        };
-
-        const pct = {
-          revenue: prv.revenue ? diff.revenue / prv.revenue * 100 : 100,
-          checks: prv.checks ? diff.checks / prv.checks * 100 : 100,
-          guests: prv.guests ? diff.guests / prv.guests * 100 : 100,
-          avgCheck: prv.avgCheck ? diff.avgCheck / prv.avgCheck * 100 : 100,
-          bkv: prv.bkv ? diff.bkv / prv.bkv * 100 : 100,
-          avgGuest: prv.avgGuest ? diff.avgGuest / prv.avgGuest * 100 : 100,
-        };
-
-        row.push({ waiter, current: cur, previous: prv, diff, pct });
-      }
-
-      result.push({
-        week: `${w * 7 + 1}-${w * 7 + 7}`,
-        compare: row
-      });
-    }
-
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ======================================================================
-//                        СРАВНЕНИЕ МЕСЯЦ К МЕСЯЦУ
-// ======================================================================
-app.get("/report/waiters-monthly-compare", (req, res) => {
-  try {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = now.getMonth() + 1;
-
-    const prevM = m === 1 ? 12 : m - 1;
-    const prevY = m === 1 ? y - 1 : y;
-
-    const load = (year, month) => {
-      const rows = db
-        .prepare(`
-          SELECT * FROM waiters_stats
-          WHERE strftime('%Y', date)=? AND strftime('%m', date)=?
-        `)
-        .all(String(year), String(month).padStart(2, "0"));
-
-      const map = {};
-      for (const r of rows) {
-        if (!map[r.waiter]) map[r.waiter] = [];
-        map[r.waiter].push(r);
-      }
-
-      const res = {};
-      for (const w of Object.keys(map)) {
-        res[w] = computeWaiterMetrics(map[w]);
-      }
-      return res;
-    };
-
-    const curr = load(y, m);
-    const prev = load(prevY, prevM);
-
-    const result = [];
-
-    for (const waiter of Object.keys(curr)) {
-      const c = curr[waiter];
-      const p = prev[waiter] || { revenue: 0, guests: 0, checks: 0, dishes: 0, avgCheck: 0, bkv: 0, avgGuest: 0 };
-
-      const diff = {
-        revenue: c.revenue - p.revenue,
-        guests: c.guests - p.guests,
-        checks: c.checks - p.checks,
-        dishes: c.dishes - p.dishes,
-        avgCheck: c.avgCheck - p.avgCheck,
-        bkv: c.bkv - p.bkv,
-        avgGuest: c.avgGuest - p.avgGuest,
-      };
-
-      const pct = {
-        revenue: p.revenue ? diff.revenue / p.revenue * 100 : 100,
-        checks: p.checks ? diff.checks / p.checks * 100 : 100,
-        guests: p.guests ? diff.guests / p.guests * 100 : 100,
-        avgCheck: p.avgCheck ? diff.avgCheck / p.avgCheck * 100 : 100,
-        bkv: p.bkv ? diff.bkv / p.bkv * 100 : 100,
-        avgGuest: p.avgGuest ? diff.avgGuest / p.avgGuest * 100 : 100,
-      };
-
-      result.push({ waiter, current: c, previous: p, diff, pct });
-    }
-
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ======================================================================
-app.listen(3000, () =>
-  console.log("✅ Сервер запущен: http://localhost:3000")
-);
