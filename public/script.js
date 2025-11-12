@@ -16,14 +16,29 @@ async function loadPlan(year, month) {
   const rows = await res.json();
   const totalRevenue = rows.reduce((s, r) => s + (r.revenue || 0), 0);
 
+  // Остаток
+  const left = plan - totalRevenue;
+
+  // Сколько осталось дней
+  const today = new Date();
+  const lastDay = new Date(year, month, 0).getDate();
+  const currentDay = today.getDate();
+  const daysLeft = Math.max(1, lastDay - currentDay + 1);
+
+  // Сколько нужно в день
+  const needPerDay = plan ? Math.ceil(left / daysLeft) : 0;
+
+  // Заполняем таблицу
   document.getElementById("planValueCell").textContent =
     plan ? `${plan.toLocaleString()} ₽` : "—";
   document.getElementById("planDoneCell").textContent =
     `${totalRevenue.toLocaleString()} ₽`;
   document.getElementById("planLeftCell").textContent =
-    plan ? `${(plan - totalRevenue).toLocaleString()} ₽` : "—";
+    plan ? `${left.toLocaleString()} ₽` : "—";
   document.getElementById("planPctCell").textContent =
     plan ? ((totalRevenue / plan) * 100).toFixed(1) + "%" : "—";
+  document.getElementById("planDailyNeedCell").textContent =
+    plan ? `${needPerDay.toLocaleString()} ₽ / день` : "—";
 
   const planInput = document.getElementById("planValue");
   if (planInput) planInput.value = plan || "";
