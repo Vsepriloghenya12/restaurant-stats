@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>Ввод данных — Ресторан</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <h1>Ввод данных за день</h1>
+
+  <section>
+    <h2>Общие показатели (включая кальяны)</h2>
+    <form id="generalForm">
+      <label>Дата: <input type="date" id="date" required /></label>
+      <label>Выручка: <input type="number" id="revenue" required /></label>
+      <label>Гостей: <input type="number" id="guests" required /></label>
+      <label>Чеки: <input type="number" id="checks" required /></label>
+      <button type="submit">💾 Сохранить общие данные</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>Официанты (без кальянов)</h2>
+    <table id="waitersTable">
+      <thead>
+        <tr>
+          <th>Имя</th><th>Выручка</th><th>Гостей</th><th>Чеки</th><th>Блюда (БКВ)</th><th></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <button id="addWaiter">➕ Добавить официанта</button>
+    <button id="saveWaiters">💾 Сохранить официантов</button>
+  </section>
+
+  <p id="status"></p>
+  <a href="report.html">📊 Перейти к отчётам</a>
+
+  <script src="script.js"></script>
+</body>
+</html>

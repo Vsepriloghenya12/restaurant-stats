@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Отчёты — Ресторан</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1>Отчёты</h1>
+  <a href="index.html">⬅️ Назад</a>
+
+  <section>
+    <h2>Общая выручка</h2>
+    <div id="revenue"></div>
+    <h3>План на месяц</h3>
+    <input id="planInput" type="number" placeholder="Введите план ₽">
+    <button id="savePlan">💾 Сохранить план</button>
+  </section>
+
+  <section>
+    <h2>Выполнение плана по неделям</h2>
+    <button id="loadWeeklyPlan">Показать</button>
+    <div id="weeklyPlan"></div>
+  </section>
+
+  <section>
+    <h2>Сравнение 2025 ↔ 2024 по неделям</h2>
+    <button id="loadWeeklyCompare">Показать</button>
+    <div id="weeklyCompare"></div>
+  </section>
+
+  <script>
+  document.addEventListener("DOMContentLoaded", () => {
+
+    async function loadRevenue() {
+      const res = await fetch("/report/revenue");
+      const d = await res.json();
+      document.getElementById("revenue").innerHTML = `
+        <table>
+          <tr><th>Показатель</th><th>Значение</th></tr>
+          <tr><td>Выручка текущего месяца</td><td>${d.curSum.toFixed(0)} ₽</td></tr>
+          <tr><td>Прошлый год (тот же месяц)</td><td>${d.lastSum.toFixed(0)} ₽</td></tr>
+          <tr><td>Изменение</td><td>${d.diff.toFixed(0)} ₽ (${d.percent.toFixed(1)}%)</td></tr>
+          <tr><td>Прогноз</td><td>${d.forecast.toFixed(0)} ₽</td></tr>
+          <tr><td>План</td><td>${d.plan.toFixed(0)} ₽</td></tr>
+          <tr><td>Осталось до плана</td><td>${d.remain.toFixed(0)} ₽</td></tr>
+          <tr><td>Нужно в день</td><td>${d.needPerDay.toFixed(0)} ₽</td></tr>
+        </table>`;
+      document.getElementById("planInput").value = d.plan.toFixed(0);
+    }
+
+    async function loadWeeklyPlan() {
+      const res = await fetch("/report/weekly-plan");
+      const d = await res.json();
+      document.getElementById("weeklyPlan").innerHTML = `
+        <table>
+          <tr><th>Неделя</th><th>Выручка</th><th>% выполнения</th></tr>
+          ${d.result.map(r => `
+            <tr>
+              <td>${r.week}</td>
+              <td>${r.revenue.toFixed(0)} ₽</td>
+              <td>${r.percent.toFixed(1)}%</td>
+            </tr>
+          `).join("")}
+          <tr><th>План месяца</th><th>${d.plan.toFixed(0)} ₽</th><th></th></tr>
+        </table>`;
+    }
+
+    async function loadWeeklyCompare() {
+      const res = await fetch("/report/weekly-compare");
+      const data = await res.json();
+      document.getElementById("weeklyCompare").innerHTML = `
+        <table>
+          <tr>
+            <th>Неделя</th><th>Выручка 2024</th><th>Выручка 2025</th><th>Δ%</th>
+            <th>Гости 2024</th><th>Гости 2025</th><th>Δ%</th>
+            <th>Чеки 2024</th><th>Чеки 2025</th><th>Δ%</th>
+            <th>Ср.чек 2024</th><th>Ср.чек 2025</th><th>Δ%</th>
+          </tr>
+          ${data.map(r => `
+            <tr>
+              <td>${r.week}</td>
+              <td>${r.rev2024.toFixed(0)}</td>
+              <td>${r.rev2025.toFixed(0)}</td>
+              <td>${r.pctRev.toFixed(1)}%</td>
+              <td>${r.g2024}</td>
+              <td>${r.g2025}</td>
+              <td>${r.pctGuests.toFixed(1)}%</td>
+              <td>${r.c2024}</td>
+              <td>${r.c2025}</td>
+              <td>${r.pctChecks.toFixed(1)}%</td>
+              <td>${r.avg2024.toFixed(0)}</td>
+              <td>${r.avg2025.toFixed(0)}</td>
+              <td>${r.pctAvg.toFixed(1)}%</td>
+            </tr>`).join("")}
+        </table>`;
+    }
+
+    // === обработчики ===
+    document.getElementById("savePlan").onclick = async () => {
+      const now = new Date();
+      const plan = parseFloat(document.getElementById("planInput").value);
+      await fetch("/plan/set", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({year: now.getFullYear(), month: now.getMonth() + 1, plan})
+      });
+      await loadRevenue();
+      await loadWeeklyPlan();
+    };
+
+    document.getElementById("loadWeeklyPlan").onclick = loadWeeklyPlan;
+    document.getElementById("loadWeeklyCompare").onclick = loadWeeklyCompare;
+
+    // === автозагрузка при открытии ===
+    loadRevenue();
+
+  });
+  </script>
+</body>
+</html>
