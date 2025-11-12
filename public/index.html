@@ -2,39 +2,36 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <title>Ввод данных — Ресторан</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ввод данных — Restaurant Stats</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <h1>Ввод данных за день</h1>
+  <div class="container">
+    <h1>Ввод данных за день</h1>
 
-  <section>
-    <h2>Общие показатели (включая кальяны)</h2>
-    <form id="generalForm">
-      <label>Дата: <input type="date" id="date" required /></label>
-      <label>Выручка: <input type="number" id="revenue" required /></label>
-      <label>Гостей: <input type="number" id="guests" required /></label>
-      <label>Чеки: <input type="number" id="checks" required /></label>
-      <button type="submit">💾 Сохранить общие данные</button>
+    <form id="dayForm">
+      <label>Дата: <input type="date" id="dayDate" required /></label>
+      <label>Выручка: <input type="number" id="dayRevenue" required /></label>
+      <label>Гостей: <input type="number" id="dayGuests" required /></label>
+      <label>Чеков: <input type="number" id="dayChecks" required /></label>
+      <button type="submit">Сохранить</button>
     </form>
-  </section>
 
-  <section>
-    <h2>Официанты (без кальянов)</h2>
-    <table id="waitersTable">
-      <thead>
-        <tr>
-          <th>Имя</th><th>Выручка</th><th>Гостей</th><th>Чеки</th><th>Блюда (БКВ)</th><th></th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-    <button id="addWaiter">➕ Добавить официанта</button>
-    <button id="saveWaiters">💾 Сохранить официантов</button>
-  </section>
+    <h2>Ввод показателей официантов</h2>
 
-  <p id="status"></p>
-  <a href="report.html">📊 Перейти к отчётам</a>
+    <form id="waiterForm">
+      <label>Дата: <input type="date" id="waiterDate" required /></label>
+      <label>Официант: <input type="text" id="waiterName" required /></label>
+      <label>Выручка: <input type="number" id="waiterRevenue" required /></label>
+      <label>Гостей: <input type="number" id="waiterGuests" required /></label>
+      <label>Чеков: <input type="number" id="waiterChecks" required /></label>
+      <label>Блюда (БКВ): <input type="number" id="waiterDishes" required /></label>
+      <button type="submit">Сохранить</button>
+    </form>
+
+    <a href="report.html" class="btn">Перейти к отчётам</a>
+  </div>
 
   <script src="script.js"></script>
 </body>
