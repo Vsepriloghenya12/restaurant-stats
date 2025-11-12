@@ -1,13 +1,26 @@
 {
   "name": "restaurant-stats",
-  "version": "3.0.0",
+  "version": "4.3.0",
+  "description": "Веб-приложение для учёта показателей ресторана (Node.js + SQLite + Express)",
   "main": "server.cjs",
-  "type": "commonjs",
   "scripts": {
-    "start": "node server.cjs"
+    "start": "node server.cjs",
+    "postinstall": "npm rebuild sqlite3 --build-from-source"
   },
   "dependencies": {
-    "express": "^4.19.2",
+    "express": "^4.18.2",
     "sqlite3": "^5.1.6"
-  }
+  },
+  "engines": {
+    "node": ">=18 <23"
+  },
+  "keywords": [
+    "restaurant",
+    "stats",
+    "nodejs",
+    "express",
+    "sqlite"
+  ],
+  "author": "твой_ник_GitHub",
+  "license": "MIT"
 }
