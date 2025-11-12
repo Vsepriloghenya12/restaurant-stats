@@ -14,7 +14,13 @@
 
   <div class="block">
     <h2>План месяца</h2>
-    <div id="planInfo">Загрузка...</div>
+    <table class="simple">
+  <tr><th>Показатель</th><th>Значение</th></tr>
+  <tr><td>План месяца</td><td id="planValueCell"></td></tr>
+  <tr><td>Выполнено</td><td id="planDoneCell"></td></tr>
+  <tr><td>Осталось</td><td id="planLeftCell"></td></tr>
+  <tr><td>% выполнения</td><td id="planPctCell"></td></tr>
+</table>
 
     <form id="planForm">
       <label>План на месяц: <input type="number" id="planValue" required></label>
