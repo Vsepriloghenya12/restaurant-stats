@@ -1,5 +1,5 @@
 const express = require("express");
-const sqlite3 = require("sqlite3").verbose();
+const Database = require("better-sqlite3");
 const path = require("path");
 
 const app = express();
@@ -7,7 +7,7 @@ const dbPath = path.join(__dirname, "stats.sqlite");
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-const db = new sqlite3.Database(dbPath);
+const db = new Database(process.env.SQLITE_PATH || path.join(__dirname, "stats.sqlite"));
 
 // === Инициализация таблиц ===
 db.serialize(() => {
