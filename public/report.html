@@ -7,56 +7,54 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
 <div class="container">
-
   <h1>Отчёты</h1>
 
+  <!-- ПЛАН МЕСЯЦА -->
   <div class="block">
     <h2>План месяца</h2>
+
     <table class="simple">
-  <tr><th>Показатель</th><th>Значение</th></tr>
-  <tr><td>План месяца</td><td id="planValueCell"></td></tr>
-  <tr><td>Выполнено</td><td id="planDoneCell"></td></tr>
-  <tr><td>Осталось</td><td id="planLeftCell"></td></tr>
-  <tr><td>% выполнения</td><td id="planPctCell"></td></tr>
-</table>
+      <tr><th>Показатель</th><th>Значение</th></tr>
+      <tr><td>План месяца</td><td id="planValueCell">Загрузка...</td></tr>
+      <tr><td>Выполнено</td><td id="planDoneCell">Загрузка...</td></tr>
+      <tr><td>Осталось</td><td id="planLeftCell">Загрузка...</td></tr>
+      <tr><td>% выполнения</td><td id="planPctCell">Загрузка...</td></tr>
+    </table>
 
     <form id="planForm">
-      <label>План на месяц: <input type="number" id="planValue" required></label>
-      <button type="submit">Сохранить</button>
+      <label>Изменить план:
+        <input type="number" id="planValue" required>
+      </label>
+      <button type="submit">Сохранить план</button>
     </form>
   </div>
 
-  <div class="block">
-    <h2>Общая статистика месяца</h2>
-    <div id="monthStats">Загрузка...</div>
-  </div>
-
+  <!-- ВЫПОЛНЕНИЕ ПЛАНА ПО НЕДЕЛЯМ (с прошлым годом) -->
   <div class="block">
     <h2>Выполнение плана по неделям</h2>
     <div id="weeklyPlan">Загрузка...</div>
   </div>
 
+  <!-- СРАВНЕНИЕ С ПРОШЛЫМ ГОДОМ -->
   <div class="block">
     <h2>Сравнение с прошлым годом</h2>
     <div id="compareLastYear">Загрузка...</div>
   </div>
 
+  <!-- МЕТРИКИ ОФИЦИАНТОВ -->
   <div class="block">
     <h2>Метрики по официантам</h2>
-
     <label>Период:
       <select id="waiterPeriod">
-        <option value="week">Неделя</option>
-        <option value="month">Месяц</option>
+        <option value="week">Текущая неделя</option>
+        <option value="month">Текущий месяц</option>
       </select>
     </label>
-
     <div id="waiterStats">Загрузка...</div>
   </div>
 
-  <a class="btn" href="index.html">Назад к вводу</a>
+  <a href="index.html" class="btn">Назад к вводу</a>
 </div>
 
 <script src="script.js"></script>
