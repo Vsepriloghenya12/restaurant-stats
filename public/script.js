@@ -28,7 +28,6 @@ async function loadPlan(year, month) {
   // Сколько нужно в день
   const needPerDay = plan ? Math.ceil(left / daysLeft) : 0;
 
-  // Заполняем таблицу
   document.getElementById("planValueCell").textContent =
     plan ? `${plan.toLocaleString()} ₽` : "—";
   document.getElementById("planDoneCell").textContent =
@@ -174,12 +173,40 @@ function setupWaiterStatsPeriod(year, month) {
   loadWaiters(select.value, year, month);
 }
 
+// ================== ДОБАВЛЕНИЕ ОФИЦИАНТОВ (несколько) ==================
+
+function addWaiterRow() {
+  const container = document.getElementById("waiterRows");
+  if (!container) return;
+
+  const row = document.createElement("div");
+  row.className = "waiter-row";
+  row.innerHTML = `
+    <label>Официант
+      <input type="text" class="waiterName" required />
+    </label>
+    <label>Выручка
+      <input type="number" class="waiterRevenue" required />
+    </label>
+    <label>Гостей
+      <input type="number" class="waiterGuests" required />
+    </label>
+    <label>Чеков
+      <input type="number" class="waiterChecks" required />
+    </label>
+    <label>Блюда (БКВ)
+      <input type="number" class="waiterDishes" required />
+    </label>
+  `;
+  container.appendChild(row);
+}
+
 // ================== DOMContentLoaded ==================
 
 document.addEventListener("DOMContentLoaded", () => {
   const { year, month } = getCurrentYearMonth();
 
-  // Страница ввода
+  // Страница ввода дня
   const dayForm = document.getElementById("dayForm");
   if (dayForm) {
     dayForm.addEventListener("submit", async (e) => {
@@ -200,25 +227,47 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // Страница ввода официантов (несколько)
   const waiterForm = document.getElementById("waiterForm");
   if (waiterForm) {
+    const addBtn = document.getElementById("addWaiterRow");
+    if (addBtn) {
+      addBtn.addEventListener("click", () => {
+        addWaiterRow();
+      });
+    }
+
     waiterForm.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const body = {
-        date: document.getElementById("waiterDate").value,
-        waiter: document.getElementById("waiterName").value,
-        revenue: +document.getElementById("waiterRevenue").value,
-        guests: +document.getElementById("waiterGuests").value,
-        checks: +document.getElementById("waiterChecks").value,
-        dishes: +document.getElementById("waiterDishes").value
-      };
-      await fetch("/api/add-waiter", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
-      });
-      alert("Официант сохранён");
-      waiterForm.reset();
+      const date = document.getElementById("waiterDate").value;
+      const rows = document.querySelectorAll(".waiter-row");
+
+      if (!date) {
+        alert("Укажите дату смены");
+        return;
+      }
+
+      for (const row of rows) {
+        const name = row.querySelector(".waiterName").value;
+        const revenue = +row.querySelector(".waiterRevenue").value;
+        const guests = +row.querySelector(".waiterGuests").value;
+        const checks = +row.querySelector(".waiterChecks").value;
+        const dishes = +row.querySelector(".waiterDishes").value;
+
+        if (!name) continue;
+
+        await fetch("/api/add-waiter", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ date, waiter: name, revenue, guests, checks, dishes })
+        });
+      }
+
+      alert("Все официанты сохранены");
+      // сбрасываем только строки, дату оставляем
+      const container = document.getElementById("waiterRows");
+      container.innerHTML = "";
+      addWaiterRow();
     });
   }
 

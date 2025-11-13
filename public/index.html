@@ -32,25 +32,33 @@
 
   <div class="block">
     <form id="waiterForm">
-      <label>Дата
+      <label>Дата смены
         <input type="date" id="waiterDate" required />
       </label>
-      <label>Официант
-        <input type="text" id="waiterName" required />
-      </label>
-      <label>Выручка
-        <input type="number" id="waiterRevenue" required />
-      </label>
-      <label>Гостей
-        <input type="number" id="waiterGuests" required />
-      </label>
-      <label>Чеков
-        <input type="number" id="waiterChecks" required />
-      </label>
-      <label>Блюда (БКВ)
-        <input type="number" id="waiterDishes" required />
-      </label>
-      <button type="submit">Сохранить официанта</button>
+
+      <div id="waiterRows">
+        <!-- первая строка по умолчанию -->
+        <div class="waiter-row">
+          <label>Официант
+            <input type="text" class="waiterName" required />
+          </label>
+          <label>Выручка
+            <input type="number" class="waiterRevenue" required />
+          </label>
+          <label>Гостей
+            <input type="number" class="waiterGuests" required />
+          </label>
+          <label>Чеков
+            <input type="number" class="waiterChecks" required />
+          </label>
+          <label>Блюда (БКВ)
+            <input type="number" class="waiterDishes" required />
+          </label>
+        </div>
+      </div>
+
+      <button type="button" id="addWaiterRow">+ Добавить официанта</button>
+      <button type="submit">Сохранить всех</button>
     </form>
   </div>
 
