@@ -84,37 +84,15 @@ app.post("/api/add-waiter", (req, res) => {
 
 // агрегированные метрики по официантам
 app.get("/api/waiters", (req, res) => {
-  const { period, year, month } = req.query;
-  const y = Number(year);
-  const m = Number(month);
-
-  let start, end;
-
-  if (period === "month") {
-    start = `${y}-${String(m).padStart(2, "0")}-01`;
-    // конец месяца
-    const lastDay = new Date(y, m, 0).getDate();
-    end = `${y}-${String(m).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
-  } else {
-    // неделя: берём текущую календарную неделю
-    const now = new Date();
-    const day = now.getDay() || 7; // 1..7
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - day + 1);
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-
-    start = monday.toISOString().slice(0, 10);
-    end = sunday.toISOString().slice(0, 10);
-  }
+  const { start, end } = req.query;
 
   try {
     const rows = db.prepare(`
       SELECT waiter,
              SUM(revenue) AS total_revenue,
-             SUM(guests)  AS total_guests,
-             SUM(checks)  AS total_checks,
-             SUM(dishes)  AS total_dishes
+             SUM(guests) AS total_guests,
+             SUM(checks) AS total_checks,
+             SUM(dishes) AS total_dishes
       FROM waiters_stats
       WHERE date >= ? AND date <= ?
       GROUP BY waiter
@@ -131,7 +109,6 @@ app.get("/api/waiters", (req, res) => {
     res.status(500).json({ ok: false, error: e.message });
   }
 });
-
 // ======================
 //   API: ПЛАН
 // ======================

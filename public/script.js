@@ -142,7 +142,55 @@ async function loadCompareLastYear(year, month) {
 }
 
 async function loadWaiters(period, year, month) {
-  const res = await fetch(`/api/waiters?period=${period}&year=${year}&month=${month}`);
+
+  // Рассчитываем границы периода
+  function getRange(period) {
+    const y = year;
+    const m = month;
+    const pad = n => String(n).padStart(2, "0");
+
+    let start, end;
+
+    switch (period) {
+      case "w1":
+        start = `${y}-${pad(m)}-01`;
+        end   = `${y}-${pad(m)}-07`;
+        break;
+
+      case "w2":
+        start = `${y}-${pad(m)}-08`;
+        end   = `${y}-${pad(m)}-14`;
+        break;
+
+      case "w3":
+        start = `${y}-${pad(m)}-15`;
+        end   = `${y}-${pad(m)}-21`;
+        break;
+
+      case "w4":
+        start = `${y}-${pad(m)}-22`;
+        end   = `${y}-${pad(m)}-28`;
+        break;
+
+      case "w5":
+        start = `${y}-${pad(m)}-29`;
+        end   = `${y}-${pad(m)}-31`;
+        break;
+
+      case "month":
+      default:
+        const lastDay = new Date(y, m, 0).getDate();
+        start = `${y}-${pad(m)}-01`;
+        end   = `${y}-${pad(m)}-${pad(lastDay)}`;
+    }
+
+    return { start, end };
+  }
+
+  const { start, end } = getRange(period);
+
+  // Получение данных с сервера
+  const res = await fetch(`/api/waiters?start=${start}&end=${end}`);
   const rows = await res.json();
 
   let html = `
