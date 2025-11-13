@@ -54,31 +54,42 @@ async function loadWeeklyPlan(year, month) {
   const planData = await planRes.json();
   const plan = planData.plan || 0;
 
+  // массивы
   const weeksThis = [0, 0, 0, 0, 0];
   const weeksPrev = [0, 0, 0, 0, 0];
 
-  function fillWeeks(rows, arr) {
+  const checksThis = [0, 0, 0, 0, 0];
+  const checksPrev = [0, 0, 0, 0, 0];
+
+  function fillWeeks(rows, revArr, chkArr) {
     rows.forEach(r => {
       const day = Number(r.date.split("-")[2]);
       const idx = day <= 7 ? 0 : day <= 14 ? 1 : day <= 21 ? 2 : day <= 28 ? 3 : 4;
-      arr[idx] += r.revenue || 0;
+      revArr[idx] += r.revenue || 0;
+      chkArr[idx] += r.checks || 0;
     });
   }
 
-  fillWeeks(thisRows, weeksThis);
-  fillWeeks(prevRows, weeksPrev);
+  fillWeeks(thisRows, weeksThis, checksThis);
+  fillWeeks(prevRows, weeksPrev, checksPrev);
 
   let html = `<table>
     <tr>
       <th>Неделя</th>
-      <th>${year}</th>
-      <th>${year - 1}</th>
+      <th>${year} Выручка</th>
+      <th>${year - 1} Выручка</th>
       <th>Δ</th>
       <th>% к плану</th>
+      <th>Ср. чек ${year}</th>
+      <th>Ср. чек ${year - 1}</th>
+      <th>Δ ср. чека</th>
     </tr>`;
 
   for (let i = 0; i < 5; i++) {
+    const avgThis = checksThis[i] ? weeksThis[i] / checksThis[i] : 0;
+    const avgPrev = checksPrev[i] ? weeksPrev[i] / checksPrev[i] : 0;
     const pct = plan ? ((weeksThis[i] / plan) * 100).toFixed(1) + "%" : "—";
+
     html += `
       <tr>
         <td>${i + 1}</td>
@@ -86,11 +97,14 @@ async function loadWeeklyPlan(year, month) {
         <td>${weeksPrev[i].toLocaleString()} ₽</td>
         <td>${(weeksThis[i] - weeksPrev[i]).toLocaleString()} ₽</td>
         <td>${pct}</td>
+        <td>${Math.round(avgThis)} ₽</td>
+        <td>${Math.round(avgPrev)} ₽</td>
+        <td>${Math.round(avgThis - avgPrev)} ₽</td>
       </tr>
     `;
   }
-  html += "</table>";
 
+  html += "</table>";
   document.getElementById("weeklyPlan").innerHTML = html;
 }
 
