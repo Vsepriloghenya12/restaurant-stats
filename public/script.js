@@ -11,115 +11,135 @@ function pad(n) {
   return String(n).padStart(2, "0");
 }
 
-// ======================================================
-// ЗАГРУЗКА СПРАВОЧНИКА ОФИЦИАНТОВ
-// ======================================================
+// Глобальный кеш списка официантов
+let waiterList = [];
 
-async function loadWaitersList() {
+// Получаем список официантов из справочника
+async function fetchWaitersList() {
   const res = await fetch("/api/waiters/list");
-  const list = await res.json();
+  const list = await res.json(); // [{name: "..."}]
+  waiterList = list;
+  return list;
+}
 
-  document.querySelectorAll(".waiterName").forEach(select => {
-    select.innerHTML = list
-      .map(w => `<option value="${w.name}">${w.name}</option>`)
-      .join("");
-  });
+// Обеспечиваем, что список официантов загружен
+async function ensureWaitersList() {
+  if (!waiterList || waiterList.length === 0) {
+    await fetchWaitersList();
+  }
+}
+
+// Создаём HTML options для select официанта
+function buildWaiterOptions(selectedName = "") {
+  return waiterList
+    .map(w => {
+      const sel = w.name === selectedName ? ' selected' : '';
+      return `<option value="${w.name}"${sel}>${w.name}</option>`;
+    })
+    .join("");
 }
 
 // ======================================================
-// ДОБАВЛЕНИЕ СТРОКИ ОФИЦИАНТА
+// ДОБАВЛЕНИЕ / УДАЛЕНИЕ СТРОК ОФИЦИАНТОВ
 // ======================================================
 
-function addWaiterRow() {
+async function addWaiterRow(prefill) {
+  // prefill: { waiter, revenue, guests, checks, dishes } или undefined
   const container = document.getElementById("waiterRows");
+  if (!container) return;
+
+  await ensureWaitersList();
 
   const row = document.createElement("div");
   row.className = "waiter-row";
+
+  const waiterName = prefill?.waiter || "";
+  const revenue = prefill?.revenue ?? "";
+  const guests = prefill?.guests ?? "";
+  const checks = prefill?.checks ?? "";
+  const dishes = prefill?.dishes ?? "";
+
   row.innerHTML = `
     <label>Официант
-      <select class="waiterName"></select>
+      <select class="waiterName">
+        ${buildWaiterOptions(waiterName)}
+      </select>
       <input type="text" class="waiterNameNew" placeholder="Новый официант">
     </label>
 
     <label>Выручка
-      <input type="number" class="waiterRevenue" required>
+      <input type="number" class="waiterRevenue" value="${revenue}" required>
     </label>
 
     <label>Гостей
-      <input type="number" class="waiterGuests" required>
+      <input type="number" class="waiterGuests" value="${guests}" required>
     </label>
 
     <label>Чеков
-      <input type="number" class="waiterChecks" required>
+      <input type="number" class="waiterChecks" value="${checks}" required>
     </label>
 
     <label>Блюда (БКВ)
-      <input type="number" class="waiterDishes" required>
+      <input type="number" class="waiterDishes" value="${dishes}" required>
     </label>
   `;
 
   container.appendChild(row);
-  loadWaitersList();
+}
+
+function removeLastWaiterRow() {
+  const container = document.getElementById("waiterRows");
+  if (!container) return;
+  const rows = container.querySelectorAll(".waiter-row");
+  if (rows.length > 1) {
+    container.removeChild(rows[rows.length - 1]);
+  }
+  // если одна строка — просто ничего не делаем
 }
 
 // ======================================================
-// ЗАГРУЗКА ДАННЫХ ДНЯ ДЛЯ РЕДАКТИРОВАНИЯ
+// ЗАГРУЗКА ДАННЫХ ДНЯ (общие + официанты)
 // ======================================================
 
 async function loadDayData(date) {
+  if (!date) return;
+
   const res = await fetch(`/api/day?date=${date}`);
   const data = await res.json();
 
-  // ====== данные дня ======
+  // ---- общие показатели дня ----
   if (data.day) {
     document.getElementById("dayRevenue").value = data.day.revenue;
     document.getElementById("dayGuests").value = data.day.guests;
     document.getElementById("dayChecks").value = data.day.checks;
+  } else {
+    // если данных нет — очистим поля
+    document.getElementById("dayRevenue").value = "";
+    document.getElementById("dayGuests").value = "";
+    document.getElementById("dayChecks").value = "";
   }
 
-  // ====== данные официантов ======
+  // ---- официанты ----
   const container = document.getElementById("waiterRows");
+  if (!container) return;
   container.innerHTML = "";
 
+  await ensureWaitersList();
+
   if (data.waiters && data.waiters.length > 0) {
+    // создаём строки по существующим официантам
     for (const w of data.waiters) {
-      const row = document.createElement("div");
-      row.className = "waiter-row";
-      row.innerHTML = `
-        <label>Официант
-          <select class="waiterName"></select>
-          <input type="text" class="waiterNameNew" placeholder="Новый официант">
-        </label>
-
-        <label>Выручка
-          <input type="number" class="waiterRevenue" value="${w.revenue}" required>
-        </label>
-
-        <label>Гостей
-          <input type="number" class="waiterGuests" value="${w.guests}" required>
-        </label>
-
-        <label>Чеков
-          <input type="number" class="waiterChecks" value="${w.checks}" required>
-        </label>
-
-        <label>Блюда (БКВ)
-          <input type="number" class="waiterDishes" value="${w.dishes}" required>
-        </label>
-      `;
-
-      container.appendChild(row);
-
-      // Загружаем список, затем ставим нужного официанта
-      setTimeout(() => {
-        loadWaitersList();
-        setTimeout(() => {
-          row.querySelector(".waiterName").value = w.waiter;
-        }, 50);
-      }, 50);
+      await addWaiterRow({
+        waiter: w.waiter,
+        revenue: w.revenue,
+        guests: w.guests,
+        checks: w.checks,
+        dishes: w.dishes
+      });
     }
   } else {
-    addWaiterRow();
+    // если нет записей — одна пустая строка
+    await addWaiterRow();
   }
 }
 
@@ -151,11 +171,11 @@ async function loadPlan(year, month) {
   document.getElementById("planDailyNeedCell").textContent = plan ? `${needPerDay.toLocaleString()} ₽/день` : "—";
 
   const planInput = document.getElementById("planValue");
-  if (planInput) planInput.value = plan;
+  if (planInput) planInput.value = plan || "";
 }
 
 // ======================================================
-// ВЫПОЛНЕНИЕ ПЛАНА ПО НЕДЕЛЯМ (расширенное)
+// ВЫПОЛНЕНИЕ ПЛАНА ПО НЕДЕЛЯМ + СРЕДНИЙ ЧЕК
 // ======================================================
 
 async function loadWeeklyPlan(year, month) {
@@ -187,17 +207,17 @@ async function loadWeeklyPlan(year, month) {
   fill(prevRows, weeksPrev, checksPrev);
 
   let html = `
-  <table>
-    <tr>
-      <th>Неделя</th>
-      <th>${year}</th>
-      <th>${year - 1}</th>
-      <th>Δ</th>
-      <th>% к плану</th>
-      <th>Ср. чек ${year}</th>
-      <th>Ср. чек ${year - 1}</th>
-      <th>Δ ср. чека</th>
-    </tr>
+    <table>
+      <tr>
+        <th>Неделя</th>
+        <th>${year} выручка</th>
+        <th>${year - 1} выручка</th>
+        <th>Δ выручки</th>
+        <th>% к плану</th>
+        <th>Ср. чек ${year}</th>
+        <th>Ср. чек ${year - 1}</th>
+        <th>Δ ср. чека</th>
+      </tr>
   `;
 
   for (let i = 0; i < 5; i++) {
@@ -215,7 +235,8 @@ async function loadWeeklyPlan(year, month) {
         <td>${Math.round(avgThis)} ₽</td>
         <td>${Math.round(avgPrev)} ₽</td>
         <td>${Math.round(avgThis - avgPrev)} ₽</td>
-      </tr>`;
+      </tr>
+    `;
   }
 
   html += "</table>";
@@ -223,7 +244,7 @@ async function loadWeeklyPlan(year, month) {
 }
 
 // ======================================================
-// СРАВНЕНИЕ С ПРОШЛЫМ ГОДОМ
+// СРАВНЕНИЕ С ПРОШЛЫМ ГОДОМ (месяц)
 // ======================================================
 
 async function loadCompareLastYear(year, month) {
@@ -241,8 +262,6 @@ async function loadCompareLastYear(year, month) {
   const avgThis = tChecks ? tRev / tChecks : 0;
   const avgPrev = pChecks ? pRev / pChecks : 0;
 
-  const fillThis = tChecks ? 0 : 0; // показатели официантов считаются отдельно (опционально)
-
   document.getElementById("compareLastYear").innerHTML = `
     <p>Выручка: <b>${tRev.toLocaleString()} ₽</b> / ${pRev.toLocaleString()} ₽</p>
     <p>Гости: <b>${tGuests}</b> / ${pGuests}</p>
@@ -252,14 +271,13 @@ async function loadCompareLastYear(year, month) {
 }
 
 // ======================================================
-// МЕТРИКИ ОФИЦИАНТОВ ПО НЕДЕЛЯМ
+// МЕТРИКИ ОФИЦИАНТОВ (таблица в отчётах)
 // ======================================================
 
-async function loadWaiters(period, year, month) {
+async function loadWaitersMetrics(period, year, month) {
   function getRange(period) {
     const y = year;
     const m = month;
-
     let start, end;
 
     if (period === "w1") { start = `${y}-${pad(m)}-01`; end = `${y}-${pad(m)}-07`; }
@@ -299,12 +317,13 @@ async function loadWaiters(period, year, month) {
       <tr>
         <td>${r.waiter}</td>
         <td>${(r.total_revenue || 0).toLocaleString()} ₽</td>
-        <td>${r.total_guests}</td>
-        <td>${r.total_checks}</td>
-        <td>${r.total_dishes}</td>
+        <td>${r.total_guests || 0}</td>
+        <td>${r.total_checks || 0}</td>
+        <td>${r.total_dishes || 0}</td>
         <td>${Math.round(r.average_check || 0)} ₽</td>
         <td>${(r.fill || 0).toFixed(2)}</td>
-      </tr>`;
+      </tr>
+    `;
   });
 
   html += "</table>";
@@ -312,20 +331,40 @@ async function loadWaiters(period, year, month) {
 }
 
 // ======================================================
-// DOMContentLoaded
+// DOMContentLoaded — ИНИЦИАЛИЗАЦИЯ СТРАНИЦ
 // ======================================================
 
 document.addEventListener("DOMContentLoaded", () => {
   const { year, month } = getCurrentYearMonth();
 
-  // ===== ВВОД ДАННЫХ ДНЯ =====
+  // ---------- СТРАНИЦА ВВОДА ДАННЫХ ----------
   const dayForm = document.getElementById("dayForm");
+  const waiterForm = document.getElementById("waiterForm");
+  const dayDateInput = document.getElementById("dayDate");
+  const waiterDateInput = document.getElementById("waiterDate");
+
+  // синхронизация дат между блоками
+  if (dayDateInput && waiterDateInput) {
+    dayDateInput.addEventListener("change", e => {
+      const d = e.target.value;
+      waiterDateInput.value = d;
+      loadDayData(d);
+    });
+
+    waiterDateInput.addEventListener("change", e => {
+      const d = e.target.value;
+      dayDateInput.value = d;
+      loadDayData(d);
+    });
+  }
+
+  // обработчик сохранения дня
   if (dayForm) {
     dayForm.addEventListener("submit", async e => {
       e.preventDefault();
 
       const body = {
-        date: document.getElementById("dayDate").value,
+        date: dayDateInput.value,
         revenue: +document.getElementById("dayRevenue").value,
         guests: +document.getElementById("dayGuests").value,
         checks: +document.getElementById("dayChecks").value
@@ -337,53 +376,55 @@ document.addEventListener("DOMContentLoaded", () => {
         body: JSON.stringify(body)
       });
 
-      alert("День сохранён");
+      // очищаем только числа, дату оставляем
+      document.getElementById("dayRevenue").value = "";
+      document.getElementById("dayGuests").value = "";
+      document.getElementById("dayChecks").value = "";
     });
   }
 
-  // ===== ВВОД ОФИЦИАНТОВ =====
-  const waiterForm = document.getElementById("waiterForm");
+  // обработчик работы с официантами
   if (waiterForm) {
-    loadWaitersList();
-
-    document.getElementById("addWaiterRow").addEventListener("click", () => {
-      addWaiterRow();
-    });
-
-    document.getElementById("removeWaiterRow")?.addEventListener("click", () => {
+    (async () => {
+      // при загрузке — одна пустая строка
       const container = document.getElementById("waiterRows");
-      const rows = container.querySelectorAll(".waiter-row");
-      if (rows.length > 1) {
-        container.removeChild(rows[rows.length - 1]);
-      } else {
-        alert("Должен быть хотя бы один официант.");
+      if (container && container.children.length === 0) {
+        await addWaiterRow();
       }
-    });
+    })();
 
-    // Подстановка при выборе даты
-    document.getElementById("waiterDate").addEventListener("change", e => {
-      const date = e.target.value;
-      if (date) loadDayData(date);
-    });
+    const addBtn = document.getElementById("addWaiterRow");
+    if (addBtn) {
+      addBtn.addEventListener("click", () => {
+        addWaiterRow();
+      });
+    }
 
-    // Сохранение всех официантов
+    const removeBtn = document.getElementById("removeWaiterRow");
+    if (removeBtn) {
+      removeBtn.addEventListener("click", () => {
+        removeLastWaiterRow();
+      });
+    }
+
+    // сохранение всех официантов за дату (с перезаписью)
     waiterForm.addEventListener("submit", async e => {
       e.preventDefault();
 
-      const date = document.getElementById("waiterDate").value;
+      const date = waiterDateInput.value;
       const rows = document.querySelectorAll(".waiter-row");
 
-      // Удаляем старые данные за дату
+      // удаляем старые записи по этой дате
       await fetch("/api/delete-waiters-day", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({ date })
       });
 
-      // Сохраняем новые
+      // сохраняем новые
       for (const row of rows) {
-        const selName = row.querySelector(".waiterName").value;
         const newName = row.querySelector(".waiterNameNew").value.trim();
+        const selName = row.querySelector(".waiterName").value;
         const waiter = newName !== "" ? newName : selName;
 
         const revenue = +row.querySelector(".waiterRevenue").value;
@@ -398,20 +439,31 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       }
 
-      alert("Данные официантов сохранены");
+      // сбрасываем поля, но дату оставляем
+      const container = document.getElementById("waiterRows");
+      if (container) {
+        container.innerHTML = "";
+        addWaiterRow();
+      }
+
+      // сбрасываем список, чтобы при следующем раз загрузился с учётом новых официантов
+      waiterList = [];
     });
   }
 
-  // ===== ОТЧЁТЫ =====
+  // ---------- СТРАНИЦА ОТЧЁТОВ ----------
   if (document.getElementById("weeklyPlan")) {
     loadPlan(year, month);
     loadWeeklyPlan(year, month);
     loadCompareLastYear(year, month);
-    loadWaiters("w1", year, month);
+    loadWaitersMetrics("w1", year, month);
 
-    document.getElementById("waiterPeriod").onchange = e => {
-      loadWaiters(e.target.value, year, month);
-    };
+    const periodSelect = document.getElementById("waiterPeriod");
+    if (periodSelect) {
+      periodSelect.addEventListener("change", e => {
+        loadWaitersMetrics(e.target.value, year, month);
+      });
+    }
 
     const planForm = document.getElementById("planForm");
     if (planForm) {
@@ -425,7 +477,6 @@ document.addEventListener("DOMContentLoaded", () => {
           body: JSON.stringify({ year, month, plan: val })
         });
 
-        alert("План обновлён");
         loadPlan(year, month);
         loadWeeklyPlan(year, month);
       });
