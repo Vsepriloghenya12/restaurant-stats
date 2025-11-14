@@ -364,6 +364,18 @@ document.addEventListener("DOMContentLoaded", () => {
       addWaiterRow();
     });
 
+    document.getElementById("removeWaiterRow").addEventListener("click", () => {
+  const container = document.getElementById("waiterRows");
+  const rows = container.querySelectorAll(".waiter-row");
+
+  // нельзя удалить последнего, должен остаться минимум 1
+  if (rows.length > 1) {
+    container.removeChild(rows[rows.length - 1]);
+  } else {
+    alert("Должен быть хотя бы один официант.");
+  }
+});
+
     // подстановка данных при выборе даты
     document.getElementById("waiterDate").addEventListener("change", e => {
       const d = e.target.value;
