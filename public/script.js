@@ -1,11 +1,120 @@
-// ================== ВСПОМОГАТЕЛЬНЫЕ ==================
+// ======================================================
+// ВСПОМОГАТЕЛЬНЫЕ
+// ======================================================
 
 function getCurrentYearMonth() {
   const now = new Date();
   return { year: now.getFullYear(), month: now.getMonth() + 1 };
 }
 
-// ================== ОТЧЁТЫ ==================
+function pad(n) {
+  return String(n).padStart(2, "0");
+}
+
+// ======================================================
+//  ЗАГРУЗКА СПРАВОЧНИКА ОФИЦИАНТОВ
+// ======================================================
+
+async function loadWaitersList() {
+  const res = await fetch("/api/waiters/list");
+  const list = await res.json();
+
+  document.querySelectorAll(".waiterName").forEach(select => {
+    select.innerHTML = list
+      .map(w => `<option value="${w.name}">${w.name}</option>`)
+      .join("");
+  });
+}
+
+// ======================================================
+//  ДОБАВЛЕНИЕ НОВОЙ СТРОКИ ОФИЦИАНТА
+// ======================================================
+
+function addWaiterRow() {
+  const container = document.getElementById("waiterRows");
+
+  const row = document.createElement("div");
+  row.className = "waiter-row";
+  row.innerHTML = `
+    <label>Официант
+      <select class="waiterName"></select>
+      <input type="text" class="waiterNameNew" placeholder="Новый официант">
+    </label>
+
+    <label>Выручка
+      <input type="number" class="waiterRevenue" required>
+    </label>
+    <label>Гостей
+      <input type="number" class="waiterGuests" required>
+    </label>
+    <label>Чеков
+      <input type="number" class="waiterChecks" required>
+    </label>
+    <label>Блюда (БКВ)
+      <input type="number" class="waiterDishes" required>
+    </label>
+  `;
+
+  container.appendChild(row);
+  loadWaitersList();
+}
+
+// ======================================================
+//  ЗАГРУЗКА ДАННЫХ ЗА ДАТУ ДЛЯ РЕДАКТИРОВАНИЯ
+// ======================================================
+
+async function loadDayData(date) {
+  const res = await fetch(`/api/day?date=${date}`);
+  const data = await res.json();
+
+  // заполняем данные дня
+  if (data.day) {
+    document.getElementById("dayRevenue").value = data.day.revenue;
+    document.getElementById("dayGuests").value = data.day.guests;
+    document.getElementById("dayChecks").value = data.day.checks;
+  }
+
+  // заполняем данные официантов
+  const container = document.getElementById("waiterRows");
+  container.innerHTML = "";
+
+  if (data.waiters && data.waiters.length > 0) {
+    data.waiters.forEach(w => {
+      const row = document.createElement("div");
+      row.className = "waiter-row";
+
+      row.innerHTML = `
+        <label>Официант
+          <select class="waiterName"></select>
+          <input type="text" class="waiterNameNew" placeholder="Новый официант">
+        </label>
+
+        <label>Выручка
+          <input type="number" class="waiterRevenue" value="${w.revenue}" required>
+        </label>
+        <label>Гостей
+          <input type="number" class="waiterGuests" value="${w.guests}" required>
+        </label>
+        <label>Чеков
+          <input type="number" class="waiterChecks" value="${w.checks}" required>
+        </label>
+        <label>Блюда (БКВ)
+          <input type="number" class="waiterDishes" value="${w.dishes}" required>
+        </label>
+      `;
+
+      container.appendChild(row);
+    });
+    loadWaitersList();
+  } else {
+    // если данных официантов нет → одна пустая строка
+    addWaiterRow();
+  }
+}
+
+// ======================================================
+//  ПЛАН МЕСЯЦА
+// ======================================================
 
 async function loadPlan(year, month) {
   const planRes = await fetch(`/api/plan?year=${year}&month=${month}`);
@@ -14,18 +123,16 @@ async function loadPlan(year, month) {
 
   const res = await fetch(`/api/month-stats?year=${year}&month=${month}`);
   const rows = await res.json();
+
   const totalRevenue = rows.reduce((s, r) => s + (r.revenue || 0), 0);
 
-  // Остаток
   const left = plan - totalRevenue;
 
-  // Сколько осталось дней
   const today = new Date();
   const lastDay = new Date(year, month, 0).getDate();
   const currentDay = today.getDate();
   const daysLeft = Math.max(1, lastDay - currentDay + 1);
 
-  // Сколько нужно в день
   const needPerDay = plan ? Math.ceil(left / daysLeft) : 0;
 
   document.getElementById("planValueCell").textContent =
@@ -37,11 +144,15 @@ async function loadPlan(year, month) {
   document.getElementById("planPctCell").textContent =
     plan ? ((totalRevenue / plan) * 100).toFixed(1) + "%" : "—";
   document.getElementById("planDailyNeedCell").textContent =
-    plan ? `${needPerDay.toLocaleString()} ₽ / день` : "—";
+    plan ? `${needPerDay.toLocaleString()} ₽/день` : "—";
 
   const planInput = document.getElementById("planValue");
   if (planInput) planInput.value = plan || "";
 }
+
+// ======================================================
+//  ВЫПОЛНЕНИЕ ПЛАНА ПО НЕДЕЛЯМ + СРЕДНИЙ ЧЕК
+// ======================================================
 
 async function loadWeeklyPlan(year, month) {
   const resThis = await fetch(`/api/month-stats?year=${year}&month=${month}`);
@@ -54,7 +165,6 @@ async function loadWeeklyPlan(year, month) {
   const planData = await planRes.json();
   const plan = planData.plan || 0;
 
-  // массивы
   const weeksThis = [0, 0, 0, 0, 0];
   const weeksPrev = [0, 0, 0, 0, 0];
 
@@ -105,8 +215,13 @@ async function loadWeeklyPlan(year, month) {
   }
 
   html += "</table>";
+
   document.getElementById("weeklyPlan").innerHTML = html;
 }
+
+// ======================================================
+//  СРАВНЕНИЕ С ПРОШЛЫМ ГОДОМ
+// ======================================================
 
 async function loadCompareLastYear(year, month) {
   const thisRows = await (await fetch(`/api/month-stats?year=${year}&month=${month}`)).json();
@@ -123,8 +238,8 @@ async function loadCompareLastYear(year, month) {
   const avgThis = tChecks ? tRev / tChecks : 0;
   const avgPrev = pChecks ? pRev / pChecks : 0;
 
-  const wThis = await (await fetch(`/api/waiters?period=month&year=${year}&month=${month}`)).json();
-  const wPrev = await (await fetch(`/api/waiters?period=month&year=${year - 1}&month=${month}`)).json();
+  const wThis = await (await fetch(`/api/waiters?start=${year}-${pad(month)}-01&end=${year}-${pad(month)}-31`)).json();
+  const wPrev = await (await fetch(`/api/waiters?start=${year - 1}-${pad(month)}-01&end=${year - 1}-${pad(month)}-31`)).json();
 
   const dishesThis = wThis.reduce((s, w) => s + (w.total_dishes || 0), 0);
   const dishesPrev = wPrev.reduce((s, w) => s + (w.total_dishes || 0), 0);
@@ -141,47 +256,30 @@ async function loadCompareLastYear(year, month) {
   `;
 }
 
+
+// ======================================================
+//  МЕТРИКИ ОФИЦИАНТОВ ЗА ВЫБРАННЫЙ ПЕРИОД
+// ======================================================
+
 async function loadWaiters(period, year, month) {
 
-  // Рассчитываем границы периода
   function getRange(period) {
     const y = year;
     const m = month;
-    const pad = n => String(n).padStart(2, "0");
 
     let start, end;
 
     switch (period) {
-      case "w1":
-        start = `${y}-${pad(m)}-01`;
-        end   = `${y}-${pad(m)}-07`;
-        break;
-
-      case "w2":
-        start = `${y}-${pad(m)}-08`;
-        end   = `${y}-${pad(m)}-14`;
-        break;
-
-      case "w3":
-        start = `${y}-${pad(m)}-15`;
-        end   = `${y}-${pad(m)}-21`;
-        break;
-
-      case "w4":
-        start = `${y}-${pad(m)}-22`;
-        end   = `${y}-${pad(m)}-28`;
-        break;
-
-      case "w5":
-        start = `${y}-${pad(m)}-29`;
-        end   = `${y}-${pad(m)}-31`;
-        break;
-
-      case "month":
+      case "w1": start = `${y}-${pad(m)}-01`, end = `${y}-${pad(m)}-07`; break;
+      case "w2": start = `${y}-${pad(m)}-08`, end = `${y}-${pad(m)}-14`; break;
+      case "w3": start = `${y}-${pad(m)}-15`, end = `${y}-${pad(m)}-21`; break;
+      case "w4": start = `${y}-${pad(m)}-22`, end = `${y}-${pad(m)}-28`; break;
+      case "w5": start = `${y}-${pad(m)}-29`, end = `${y}-${pad(m)}-31`; break;
       default:
+      case "month":
         const lastDay = new Date(y, m, 0).getDate();
         start = `${y}-${pad(m)}-01`;
-        end   = `${y}-${pad(m)}-${pad(lastDay)}`;
+        end = `${y}-${pad(m)}-${pad(lastDay)}`;
     }
 
     return { start, end };
@@ -189,7 +287,6 @@ async function loadWaiters(period, year, month) {
 
   const { start, end } = getRange(period);
 
-  // Получение данных с сервера
   const res = await fetch(`/api/waiters?start=${start}&end=${end}`);
   const rows = await res.json();
 
@@ -203,8 +300,7 @@ async function loadWaiters(period, year, month) {
         <th>Блюда</th>
         <th>Средний чек</th>
         <th>Наполняемость</th>
-      </tr>
-  `;
+      </tr>`;
 
   rows.forEach(r => {
     html += `
@@ -216,144 +312,122 @@ async function loadWaiters(period, year, month) {
         <td>${r.total_dishes || 0}</td>
         <td>${Math.round(r.average_check || 0)} ₽</td>
         <td>${(r.fill || 0).toFixed(2)}</td>
-      </tr>
-    `;
+      </tr>`;
   });
 
   html += "</table>";
   document.getElementById("waiterStats").innerHTML = html;
 }
 
-function setupWaiterStatsPeriod(year, month) {
-  const select = document.getElementById("waiterPeriod");
-  if (!select) return;
 
-  select.onchange = () => {
-    loadWaiters(select.value, year, month);
-  };
-
-  loadWaiters(select.value, year, month);
-}
-
-// ================== ДОБАВЛЕНИЕ ОФИЦИАНТОВ (несколько) ==================
-
-function addWaiterRow() {
-  const container = document.getElementById("waiterRows");
-  if (!container) return;
-
-  const row = document.createElement("div");
-  row.className = "waiter-row";
-  row.innerHTML = `
-    <label>Официант
-      <input type="text" class="waiterName" required />
-    </label>
-    <label>Выручка
-      <input type="number" class="waiterRevenue" required />
-    </label>
-    <label>Гостей
-      <input type="number" class="waiterGuests" required />
-    </label>
-    <label>Чеков
-      <input type="number" class="waiterChecks" required />
-    </label>
-    <label>Блюда (БКВ)
-      <input type="number" class="waiterDishes" required />
-    </label>
-  `;
-  container.appendChild(row);
-}
-
-// ================== DOMContentLoaded ==================
+// ======================================================
+// DOMContentLoaded — ГЛАВНАЯ ТОЧКА ЗАПУСКА
+// ======================================================
 
 document.addEventListener("DOMContentLoaded", () => {
   const { year, month } = getCurrentYearMonth();
 
-  // Страница ввода дня
+  // -----------------------------------------
+  // Страница ВВОД ДАННЫХ
+  // -----------------------------------------
+
+  // Ввод дня
   const dayForm = document.getElementById("dayForm");
   if (dayForm) {
-    dayForm.addEventListener("submit", async (e) => {
+    dayForm.addEventListener("submit", async e => {
       e.preventDefault();
+
       const body = {
         date: document.getElementById("dayDate").value,
         revenue: +document.getElementById("dayRevenue").value,
         guests: +document.getElementById("dayGuests").value,
         checks: +document.getElementById("dayChecks").value
       };
+
       await fetch("/api/add-day", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {"Content-Type":"application/json"},
         body: JSON.stringify(body)
       });
-      alert("День сохранён");
-      dayForm.reset();
+
+      alert("Данные дня сохранены");
     });
   }
 
-  // Страница ввода официантов (несколько)
+  // Ввод официантов
   const waiterForm = document.getElementById("waiterForm");
-  if (waiterForm) {
-    const addBtn = document.getElementById("addWaiterRow");
-    if (addBtn) {
-      addBtn.addEventListener("click", () => {
-        addWaiterRow();
-      });
-    }
 
-    waiterForm.addEventListener("submit", async (e) => {
+  if (waiterForm) {
+    loadWaitersList();
+
+    document.getElementById("addWaiterRow").addEventListener("click", () => {
+      addWaiterRow();
+    });
+
+    // подстановка данных при выборе даты
+    document.getElementById("waiterDate").addEventListener("change", e => {
+      const d = e.target.value;
+      if (d) loadDayData(d);
+    });
+
+    // сохранение всех официантов
+    waiterForm.addEventListener("submit", async e => {
       e.preventDefault();
+
       const date = document.getElementById("waiterDate").value;
       const rows = document.querySelectorAll(".waiter-row");
 
-      if (!date) {
-        alert("Укажите дату смены");
-        return;
-      }
-
       for (const row of rows) {
-        const name = row.querySelector(".waiterName").value;
+        const sel = row.querySelector(".waiterName").value;
+        const newName = row.querySelector(".waiterNameNew").value.trim();
+        const waiter = newName !== "" ? newName : sel;
+
         const revenue = +row.querySelector(".waiterRevenue").value;
         const guests = +row.querySelector(".waiterGuests").value;
         const checks = +row.querySelector(".waiterChecks").value;
         const dishes = +row.querySelector(".waiterDishes").value;
 
-        if (!name) continue;
-
         await fetch("/api/add-waiter", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ date, waiter: name, revenue, guests, checks, dishes })
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({ date, waiter, revenue, guests, checks, dishes })
         });
       }
 
-      alert("Все официанты сохранены");
-      // сбрасываем только строки, дату оставляем
-      const container = document.getElementById("waiterRows");
-      container.innerHTML = "";
-      addWaiterRow();
+      alert("Официанты сохранены");
+      loadWaitersList();
     });
   }
 
-  // Страница отчётов
+  // -----------------------------------------
+  // Страница ОТЧЁТОВ
+  // -----------------------------------------
+
   if (document.getElementById("weeklyPlan")) {
     loadPlan(year, month);
     loadWeeklyPlan(year, month);
     loadCompareLastYear(year, month);
-    setupWaiterStatsPeriod(year, month);
+    loadWaiters("w1", year, month);
+
+    const select = document.getElementById("waiterPeriod");
+    select.onchange = () => loadWaiters(select.value, year, month);
 
     const planForm = document.getElementById("planForm");
     if (planForm) {
-      planForm.onsubmit = async (e) => {
+      planForm.addEventListener("submit", async e => {
         e.preventDefault();
         const val = +document.getElementById("planValue").value;
+
         await fetch("/api/save-plan", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {"Content-Type":"application/json"},
           body: JSON.stringify({ year, month, plan: val })
         });
+
         alert("План сохранён");
         loadPlan(year, month);
         loadWeeklyPlan(year, month);
-      };
+      });
     }
   }
 });

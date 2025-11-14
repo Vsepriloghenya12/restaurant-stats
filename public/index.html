@@ -1,28 +1,29 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ввод данных — Restaurant Stats</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ввод данных</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div class="container">
+
   <h1>Ввод данных за день</h1>
 
   <div class="block">
     <form id="dayForm">
       <label>Дата
-        <input type="date" id="dayDate" required />
+        <input type="date" id="dayDate" required>
       </label>
       <label>Выручка
-        <input type="number" id="dayRevenue" required />
+        <input type="number" id="dayRevenue" required>
       </label>
       <label>Гостей
-        <input type="number" id="dayGuests" required />
+        <input type="number" id="dayGuests" required>
       </label>
       <label>Чеков
-        <input type="number" id="dayChecks" required />
+        <input type="number" id="dayChecks" required>
       </label>
       <button type="submit">Сохранить день</button>
     </form>
@@ -31,38 +32,45 @@
   <h2>Показатели официантов</h2>
 
   <div class="block">
+
+    <label>Дата смены
+      <input type="date" id="waiterDate" required>
+    </label>
+
     <form id="waiterForm">
-      <label>Дата смены
-        <input type="date" id="waiterDate" required />
-      </label>
 
       <div id="waiterRows">
-        <!-- первая строка по умолчанию -->
         <div class="waiter-row">
+          
           <label>Официант
-            <input type="text" class="waiterName" required />
+            <select class="waiterName"></select>
+            <input type="text" class="waiterNameNew" placeholder="Новый официант">
           </label>
+
           <label>Выручка
-            <input type="number" class="waiterRevenue" required />
+            <input type="number" class="waiterRevenue" required>
           </label>
           <label>Гостей
-            <input type="number" class="waiterGuests" required />
+            <input type="number" class="waiterGuests" required>
           </label>
           <label>Чеков
-            <input type="number" class="waiterChecks" required />
+            <input type="number" class="waiterChecks" required>
           </label>
           <label>Блюда (БКВ)
-            <input type="number" class="waiterDishes" required />
+            <input type="number" class="waiterDishes" required>
           </label>
+
         </div>
       </div>
 
       <button type="button" id="addWaiterRow">+ Добавить официанта</button>
       <button type="submit">Сохранить всех</button>
+
     </form>
   </div>
 
   <a href="report.html" class="btn">Перейти к отчётам</a>
+
 </div>
 
 <script src="script.js"></script>
