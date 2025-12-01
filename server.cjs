@@ -297,6 +297,7 @@ app.get("/api/waiters-export", (req, res) => {
 
 // ======================================
 // API: ЗАГРУЗКА МЕСЯЦА ОБЩЕЙ ВЫРУЧКИ ИЗ EXCEL
+// (добавлен разбор числовых дат)
 // ======================================
 
 app.post("/api/upload-month", upload.single("file"), (req, res) => {
@@ -327,6 +328,11 @@ app.post("/api/upload-month", upload.single("file"), (req, res) => {
       if (dateCell instanceof Date) {
         const d = dateCell;
         isoDate = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+      } else if (typeof dateCell === "number") {
+        const d = xlsx.SSF.parse_date_code(dateCell);
+        if (d) {
+          isoDate = `${d.y}-${pad2(d.m)}-${pad2(d.d)}`;
+        }
       } else {
         const s = String(dateCell).split(",")[0].trim(); // "01.01.2024"
         const parts = s.split(".");
@@ -336,7 +342,12 @@ app.post("/api/upload-month", upload.single("file"), (req, res) => {
           const yyyy = parts[2];
           isoDate = `${yyyy}-${mm}-${dd}`;
         } else {
-          continue;
+          const s2 = String(dateCell).substring(0, 10);
+          if (/^\d{4}-\d{2}-\d{2}$/.test(s2)) {
+            isoDate = s2;
+          } else {
+            continue;
+          }
         }
       }
 
@@ -400,7 +411,7 @@ app.post("/api/upload-month", upload.single("file"), (req, res) => {
 });
 
 // ======================================
-// НОВОЕ: ЗАГРУЗКА ДАННЫХ ПО ОФИЦИАНТАМ ИЗ EXCEL (УМНЫЙ ПАРСЕР)
+// ЗАГРУЗКА ДАННЫХ ПО ОФИЦИАНТАМ ИЗ EXCEL (УМНЫЙ ПАРСЕР + ЧИСЛОВЫЕ ДАТЫ)
 // ======================================
 
 app.post("/api/upload-waiters-month", upload.single("file"), (req, res) => {
@@ -456,7 +467,6 @@ app.post("/api/upload-waiters-month", upload.single("file"), (req, res) => {
              <p>Не удалось определить колонки даты или официанта.</p>
              <p>Найденные заголовки в файле:</p>
              <pre>${headers.join("\n")}</pre>
-             <p>Нужны столбцы с названиями, где встречаются слова «дата/операционный» и «официант/сотрудник/ФИО».</p>
              <p><a href="/index.html">Назад</a></p>
            </body></html>`
         );
@@ -477,6 +487,11 @@ app.post("/api/upload-waiters-month", upload.single("file"), (req, res) => {
       if (dateCell instanceof Date) {
         const d = dateCell;
         isoDate = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+      } else if (typeof dateCell === "number") {
+        const d = xlsx.SSF.parse_date_code(dateCell);
+        if (d) {
+          isoDate = `${d.y}-${pad2(d.m)}-${pad2(d.d)}`;
+        }
       } else {
         const s = String(dateCell).split(",")[0].trim();
         const parts = s.split(".");
@@ -486,7 +501,6 @@ app.post("/api/upload-waiters-month", upload.single("file"), (req, res) => {
           const yyyy = parts[2];
           isoDate = `${yyyy}-${mm}-${dd}`;
         } else {
-          // пробуем формат YYYY-MM-DD
           const s2 = String(dateCell).substring(0, 10);
           if (/^\d{4}-\d{2}-\d{2}$/.test(s2)) {
             isoDate = s2;
@@ -574,15 +588,6 @@ app.post("/api/upload-waiters-month", upload.single("file"), (req, res) => {
       `<html><body>
          <p>Импортировано записей по официантам: <b>${importedRows}</b></p>
          <p>Затронуто дат: <b>${datesSet.size}</b></p>
-         <p>Использованные колонки:</p>
-         <ul>
-           <li>Дата: ${dateKey}</li>
-           <li>Официант: ${waiterKey}</li>
-           <li>Выручка: ${revKey || "не найдена (взято 0)"}</li>
-           <li>Гостей: ${guestsKey || "не найдена (0)"}</li>
-           <li>Чеков: ${checksKey || "не найдена (0)"}</li>
-           <li>Блюда: ${dishesKey || "не найдена (0)"}</li>
-         </ul>
          <p><a href="/index.html">Назад</a></p>
        </body></html>`
     );
