@@ -40,27 +40,7 @@
     <form id="waiterForm">
 
       <div id="waiterRows">
-        <div class="waiter-row">
-          
-          <label>Официант
-            <select class="waiterName"></select>
-            <input type="text" class="waiterNameNew" placeholder="Новый официант">
-          </label>
-
-          <label>Выручка
-            <input type="number" class="waiterRevenue" required>
-          </label>
-          <label>Гостей
-            <input type="number" class="waiterGuests" required>
-          </label>
-          <label>Чеков
-            <input type="number" class="waiterChecks" required>
-          </label>
-          <label>Блюда (БКВ)
-            <input type="number" class="waiterDishes" required>
-          </label>
-
-        </div>
+        <!-- строки официантов добавляет script.js -->
       </div>
 
       <button type="button" id="addWaiterRow">+ Добавить официанта</button>
@@ -68,6 +48,21 @@
       <button type="submit">Сохранить всех</button>
 
     </form>
+  </div>
+
+  <!-- НОВЫЙ БЛОК: ЗАГРУЗКА МЕСЯЦА ИЗ EXCEL -->
+  <div class="block">
+    <h2>Загрузка месяца из Excel</h2>
+    <p>
+      Загрузите файл Excel с колонками
+      <b>«Операционный день»</b>, <b>«Продажи»</b>, <b>«Гостей»</b>, <b>«Чеков»</b>.
+      Если есть несколько касс, значения по дате будут автоматически сложены.
+    </p>
+    <form action="/api/upload-month" method="post" enctype="multipart/form-data">
+      <input type="file" name="file" accept=".xlsx,.xls" required>
+      <button type="submit">Загрузить месяц</button>
+    </form>
+    <p>После загрузки появится страница с результатом и ссылкой «Назад».</p>
   </div>
 
   <a href="report.html" class="btn">Перейти к отчётам</a>

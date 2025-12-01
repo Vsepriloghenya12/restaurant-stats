@@ -1,14 +1,22 @@
 const express = require("express");
 const path = require("path");
 const Database = require("better-sqlite3");
+const multer = require("multer");
+const xlsx = require("xlsx");
 
 const app = express();
 
 const dbPath = process.env.SQLITE_PATH || path.join(__dirname, "stats.sqlite");
 const db = new Database(dbPath);
 
+const upload = multer({ storage: multer.memoryStorage() });
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
 
 // ======================================
 // БАЗА: таблицы
@@ -202,9 +210,9 @@ app.get("/api/waiters", (req, res) => {
     let sql = `
       SELECT waiter,
              SUM(revenue) AS total_revenue,
-             SUM(guests) AS total_guests,
-             SUM(checks) AS total_checks,
-             SUM(dishes) AS total_dishes
+             SUM(guests)  AS total_guests,
+             SUM(checks)  AS total_checks,
+             SUM(dishes)  AS total_dishes
       FROM waiters_stats
       WHERE date >= ? AND date <= ?
     `;
@@ -241,9 +249,9 @@ app.get("/api/waiters-export", (req, res) => {
     let sql = `
       SELECT waiter,
              SUM(revenue) AS total_revenue,
-             SUM(guests) AS total_guests,
-             SUM(checks) AS total_checks,
-             SUM(dishes) AS total_dishes
+             SUM(guests)  AS total_guests,
+             SUM(checks)  AS total_checks,
+             SUM(dishes)  AS total_dishes
       FROM waiters_stats
       WHERE date >= ? AND date <= ?
     `;
@@ -285,6 +293,110 @@ app.get("/api/waiters-export", (req, res) => {
     res.send(csv);
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ======================================
+// API: ЗАГРУЗКА МЕСЯЦА ИЗ EXCEL
+// ======================================
+
+app.post("/api/upload-month", upload.single("file"), (req, res) => {
+  if (!req.file) {
+    return res
+      .status(400)
+      .send("<html><body><p>Файл не получен</p><p><a href=\"/index.html\">Назад</a></p></body></html>");
+  }
+
+  try {
+    const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const rows = xlsx.utils.sheet_to_json(sheet, { defval: null });
+
+    const byDate = new Map(); // date -> {revenue, guests, checks}
+
+    for (const row of rows) {
+      let dateCell =
+        row["Операционный день"] ??
+        row["Дата"] ??
+        row["date"];
+
+      if (!dateCell) continue;
+
+      let isoDate = null;
+
+      if (dateCell instanceof Date) {
+        const d = dateCell;
+        isoDate = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+      } else {
+        const s = String(dateCell).split(",")[0].trim(); // "01.01.2024"
+        const parts = s.split(".");
+        if (parts.length === 3) {
+          const dd = pad2(parts[0]);
+          const mm = pad2(parts[1]);
+          const yyyy = parts[2];
+          isoDate = `${yyyy}-${mm}-${dd}`;
+        } else {
+          continue;
+        }
+      }
+
+      const revenue =
+        Number(row["Продажи"] ??
+               row["Выручка"] ??
+               row["Выручка, руб"] ??
+               0) || 0;
+      const guests =
+        Number(row["Гостей"] ??
+               row["Гости"] ??
+               0) || 0;
+      const checks =
+        Number(row["Чеков"] ??
+               row["Чеки"] ??
+               0) || 0;
+
+      if (!isoDate) continue;
+
+      const prev = byDate.get(isoDate) || { revenue: 0, guests: 0, checks: 0 };
+      prev.revenue += revenue;
+      prev.guests += guests;
+      prev.checks += checks;
+      byDate.set(isoDate, prev);
+    }
+
+    const stmt = db.prepare(`
+      INSERT INTO daily_stats (date, revenue, guests, checks)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(date) DO UPDATE SET
+        revenue = excluded.revenue,
+        guests = excluded.guests,
+        checks = excluded.checks
+    `);
+
+    let importedDays = 0;
+
+    for (const [date, agg] of byDate.entries()) {
+      if (!agg.revenue && !agg.guests && !agg.checks) continue;
+      stmt.run(date, agg.revenue, agg.guests, agg.checks);
+      importedDays++;
+    }
+
+    res.send(
+      `<html><body>
+         <p>Импортировано дней: <b>${importedDays}</b></p>
+         <p><a href="/index.html">Назад</a></p>
+       </body></html>`
+    );
+  } catch (e) {
+    console.error(e);
+    res
+      .status(500)
+      .send(
+        `<html><body>
+           <p>Ошибка импорта: ${e.message}</p>
+           <p><a href="/index.html">Назад</a></p>
+         </body></html>`
+      );
   }
 });
 
