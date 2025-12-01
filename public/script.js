@@ -33,7 +33,7 @@ async function ensureWaitersList() {
 function buildWaiterOptions(selectedName = "") {
   return waiterList
     .map(w => {
-      const sel = w.name === selectedName ? ' selected' : '';
+      const sel = w.name === selectedName ? " selected" : "";
       return `<option value="${w.name}"${sel}>${w.name}</option>`;
     })
     .join("");
@@ -94,7 +94,6 @@ function removeLastWaiterRow() {
   if (rows.length > 1) {
     container.removeChild(rows[rows.length - 1]);
   }
-  // если одна строка — просто ничего не делаем
 }
 
 // ======================================================
@@ -113,7 +112,6 @@ async function loadDayData(date) {
     document.getElementById("dayGuests").value = data.day.guests;
     document.getElementById("dayChecks").value = data.day.checks;
   } else {
-    // если данных нет — очистим поля
     document.getElementById("dayRevenue").value = "";
     document.getElementById("dayGuests").value = "";
     document.getElementById("dayChecks").value = "";
@@ -127,7 +125,6 @@ async function loadDayData(date) {
   await ensureWaitersList();
 
   if (data.waiters && data.waiters.length > 0) {
-    // создаём строки по существующим официантам
     for (const w of data.waiters) {
       await addWaiterRow({
         waiter: w.waiter,
@@ -138,7 +135,6 @@ async function loadDayData(date) {
       });
     }
   } else {
-    // если нет записей — одна пустая строка
     await addWaiterRow();
   }
 }
@@ -160,7 +156,9 @@ async function loadPlan(year, month) {
 
   const today = new Date();
   const lastDay = new Date(year, month, 0).getDate();
-  const currentDay = today.getDate();
+  const currentDay = today.getFullYear() === year && (today.getMonth() + 1) === month
+    ? today.getDate()
+    : lastDay;
   const daysLeft = Math.max(1, lastDay - currentDay + 1);
   const needPerDay = plan ? Math.ceil(left / daysLeft) : 0;
 
@@ -335,7 +333,7 @@ async function loadWaitersMetrics(period, year, month) {
 // ======================================================
 
 document.addEventListener("DOMContentLoaded", () => {
-  const { year, month } = getCurrentYearMonth();
+  let { year, month } = getCurrentYearMonth();
 
   // ---------- СТРАНИЦА ВВОДА ДАННЫХ ----------
   const dayForm = document.getElementById("dayForm");
@@ -343,7 +341,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const dayDateInput = document.getElementById("dayDate");
   const waiterDateInput = document.getElementById("waiterDate");
 
-  // синхронизация дат между блоками
   if (dayDateInput && waiterDateInput) {
     dayDateInput.addEventListener("change", e => {
       const d = e.target.value;
@@ -358,7 +355,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // обработчик сохранения дня
   if (dayForm) {
     dayForm.addEventListener("submit", async e => {
       e.preventDefault();
@@ -376,17 +372,14 @@ document.addEventListener("DOMContentLoaded", () => {
         body: JSON.stringify(body)
       });
 
-      // очищаем только числа, дату оставляем
       document.getElementById("dayRevenue").value = "";
       document.getElementById("dayGuests").value = "";
       document.getElementById("dayChecks").value = "";
     });
   }
 
-  // обработчик работы с официантами
   if (waiterForm) {
     (async () => {
-      // при загрузке — одна пустая строка
       const container = document.getElementById("waiterRows");
       if (container && container.children.length === 0) {
         await addWaiterRow();
@@ -407,21 +400,18 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    // сохранение всех официантов за дату (с перезаписью)
     waiterForm.addEventListener("submit", async e => {
       e.preventDefault();
 
       const date = waiterDateInput.value;
       const rows = document.querySelectorAll(".waiter-row");
 
-      // удаляем старые записи по этой дате
       await fetch("/api/delete-waiters-day", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({ date })
       });
 
-      // сохраняем новые
       for (const row of rows) {
         const newName = row.querySelector(".waiterNameNew").value.trim();
         const selName = row.querySelector(".waiterName").value;
@@ -439,24 +429,45 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       }
 
-      // сбрасываем поля, но дату оставляем
       const container = document.getElementById("waiterRows");
       if (container) {
         container.innerHTML = "";
         addWaiterRow();
       }
 
-      // сбрасываем список, чтобы при следующем раз загрузился с учётом новых официантов
       waiterList = [];
     });
   }
 
   // ---------- СТРАНИЦА ОТЧЁТОВ ----------
   if (document.getElementById("weeklyPlan")) {
-    loadPlan(year, month);
-    loadWeeklyPlan(year, month);
-    loadCompareLastYear(year, month);
-    loadWaitersMetrics("w1", year, month);
+    const reportMonthInput = document.getElementById("reportMonth");
+    if (reportMonthInput) {
+      reportMonthInput.value = `${year}-${pad(month)}`;
+    }
+
+    async function reloadReports() {
+      await loadPlan(year, month);
+      await loadWeeklyPlan(year, month);
+      await loadCompareLastYear(year, month);
+      const periodSelect = document.getElementById("waiterPeriod");
+      const p = periodSelect ? periodSelect.value : "w1";
+      await loadWaitersMetrics(p, year, month);
+    }
+
+    reloadReports();
+
+    if (reportMonthInput) {
+      reportMonthInput.addEventListener("change", e => {
+        const val = e.target.value; // "YYYY-MM"
+        if (val) {
+          const [yStr, mStr] = val.split("-");
+          year = Number(yStr);
+          month = Number(mStr);
+          reloadReports();
+        }
+      });
+    }
 
     const periodSelect = document.getElementById("waiterPeriod");
     if (periodSelect) {
@@ -477,8 +488,7 @@ document.addEventListener("DOMContentLoaded", () => {
           body: JSON.stringify({ year, month, plan: val })
         });
 
-        loadPlan(year, month);
-        loadWeeklyPlan(year, month);
+        reloadReports();
       });
     }
   }
