@@ -22,14 +22,12 @@ async function fetchWaitersList() {
   return list;
 }
 
-// Обеспечиваем, что список официантов загружен
 async function ensureWaitersList() {
   if (!waiterList || waiterList.length === 0) {
     await fetchWaitersList();
   }
 }
 
-// Создаём HTML options для select официанта
 function buildWaiterOptions(selectedName = "") {
   return waiterList
     .map(w => {
@@ -40,11 +38,10 @@ function buildWaiterOptions(selectedName = "") {
 }
 
 // ======================================================
-// ДОБАВЛЕНИЕ / УДАЛЕНИЕ СТРОК ОФИЦИАНТОВ
+// ДОБАВЛЕНИЕ / УДАЛЕНИЕ СТРОК ОФИЦИАНТОВ (ФОРМА ВВОДА)
 // ======================================================
 
 async function addWaiterRow(prefill) {
-  // prefill: { waiter, revenue, guests, checks, dishes } или undefined
   const container = document.getElementById("waiterRows");
   if (!container) return;
 
@@ -106,7 +103,7 @@ async function loadDayData(date) {
   const res = await fetch(`/api/day?date=${date}`);
   const data = await res.json();
 
-  // ---- общие показатели дня ----
+  // общие показатели дня
   if (data.day) {
     document.getElementById("dayRevenue").value = data.day.revenue;
     document.getElementById("dayGuests").value = data.day.guests;
@@ -117,7 +114,7 @@ async function loadDayData(date) {
     document.getElementById("dayChecks").value = "";
   }
 
-  // ---- официанты ----
+  // официанты
   const container = document.getElementById("waiterRows");
   if (!container) return;
   container.innerHTML = "";
@@ -156,20 +153,68 @@ async function loadPlan(year, month) {
 
   const today = new Date();
   const lastDay = new Date(year, month, 0).getDate();
-  const currentDay = today.getFullYear() === year && (today.getMonth() + 1) === month
-    ? today.getDate()
-    : lastDay;
+  const currentDay =
+    today.getFullYear() === year && today.getMonth() + 1 === month
+      ? today.getDate()
+      : lastDay;
   const daysLeft = Math.max(1, lastDay - currentDay + 1);
   const needPerDay = plan ? Math.ceil(left / daysLeft) : 0;
 
-  document.getElementById("planValueCell").textContent = plan ? `${plan.toLocaleString()} ₽` : "—";
-  document.getElementById("planDoneCell").textContent = `${totalRevenue.toLocaleString()} ₽`;
-  document.getElementById("planLeftCell").textContent = plan ? `${left.toLocaleString()} ₽` : "—";
-  document.getElementById("planPctCell").textContent = plan ? ((totalRevenue / plan) * 100).toFixed(1) + "%" : "—";
-  document.getElementById("planDailyNeedCell").textContent = plan ? `${needPerDay.toLocaleString()} ₽/день` : "—";
+  document.getElementById("planValueCell").textContent =
+    plan ? `${plan.toLocaleString()} ₽` : "—";
+  document.getElementById("planDoneCell").textContent =
+    `${totalRevenue.toLocaleString()} ₽`;
+  document.getElementById("planLeftCell").textContent =
+    plan ? `${left.toLocaleString()} ₽` : "—";
+  document.getElementById("planPctCell").textContent =
+    plan ? ((totalRevenue / plan) * 100).toFixed(1) + "%" : "—";
+  document.getElementById("planDailyNeedCell").textContent =
+    plan ? `${needPerDay.toLocaleString()} ₽/день` : "—";
 
   const planInput = document.getElementById("planValue");
   if (planInput) planInput.value = plan || "";
+}
+
+// ======================================================
+// ПРОГНОЗ МЕСЯЦА
+// ======================================================
+
+async function loadForecast(year, month) {
+  const resThis = await fetch(`/api/month-stats?year=${year}&month=${month}`);
+  const thisRows = await resThis.json();
+
+  const resPrev = await fetch(
+    `/api/month-stats?year=${year - 1}&month=${month}`
+  );
+  const prevRows = await resPrev.json();
+
+  const totalThis = thisRows.reduce((s, r) => s + (r.revenue || 0), 0);
+  const totalPrev = prevRows.reduce((s, r) => s + (r.revenue || 0), 0);
+
+  const daysWithData = thisRows.length;
+  const lastDay = new Date(year, month, 0).getDate();
+  const avgPerDay = daysWithData ? totalThis / daysWithData : 0;
+  const forecast = avgPerDay * lastDay;
+
+  const planRes = await fetch(`/api/plan?year=${year}&month=${month}`);
+  const planData = await planRes.json();
+  const plan = planData.plan || 0;
+
+  const forecastVsPlan = plan
+    ? ((forecast / plan) * 100).toFixed(1) + "%"
+    : "—";
+  const forecastVsPrev = totalPrev
+    ? ((forecast / totalPrev) * 100).toFixed(1) + "%"
+    : "—";
+
+  document.getElementById("forecastBlock").innerHTML = `
+    <p>Факт на сегодня: <b>${totalThis.toLocaleString()} ₽</b></p>
+    <p>Прогноз на месяц: <b>${Math.round(forecast).toLocaleString()} ₽</b></p>
+    <p>План месяца: <b>${plan ? plan.toLocaleString() + " ₽" : "—"}</b></p>
+    <p>Прошлый год (месяц): <b>${totalPrev.toLocaleString()} ₽</b></p>
+    <p>Прогноз / план: <b>${forecastVsPlan}</b></p>
+    <p>Прогноз / прошлый год: <b>${forecastVsPrev}</b></p>
+  `;
 }
 
 // ======================================================
@@ -180,7 +225,9 @@ async function loadWeeklyPlan(year, month) {
   const resThis = await fetch(`/api/month-stats?year=${year}&month=${month}`);
   const thisRows = await resThis.json();
 
-  const resPrev = await fetch(`/api/month-stats?year=${year - 1}&month=${month}`);
+  const resPrev = await fetch(
+    `/api/month-stats?year=${year - 1}&month=${month}`
+  );
   const prevRows = await resPrev.json();
 
   const planRes = await fetch(`/api/plan?year=${year}&month=${month}`);
@@ -195,7 +242,8 @@ async function loadWeeklyPlan(year, month) {
   function fill(rows, revArr, chkArr) {
     rows.forEach(r => {
       const day = Number(r.date.split("-")[2]);
-      const i = day <= 7 ? 0 : day <= 14 ? 1 : day <= 21 ? 2 : day <= 28 ? 3 : 4;
+      const i =
+        day <= 7 ? 0 : day <= 14 ? 1 : day <= 21 ? 2 : day <= 28 ? 3 : 4;
       revArr[i] += r.revenue || 0;
       chkArr[i] += r.checks || 0;
     });
@@ -242,12 +290,74 @@ async function loadWeeklyPlan(year, month) {
 }
 
 // ======================================================
+// СТАТИСТИКА ПО ДНЯМ НЕДЕЛИ
+// ======================================================
+
+async function loadWeekdayStats(year, month) {
+  const res = await fetch(`/api/month-stats?year=${year}&month=${month}`);
+  const rows = await res.json();
+
+  const sums = Array(7)
+    .fill(0)
+    .map(() => ({ revenue: 0, guests: 0, checks: 0, days: 0 }));
+
+  rows.forEach(r => {
+    const d = new Date(r.date + "T00:00:00");
+    const wd = d.getDay(); // 0-вс,1-пн...
+    const slot = sums[wd];
+    slot.revenue += r.revenue || 0;
+    slot.guests += r.guests || 0;
+    slot.checks += r.checks || 0;
+    slot.days += 1;
+  });
+
+  const names = ["Воскресенье", "Понедельник", "Вторник", "Среда",
+    "Четверг", "Пятница", "Суббота"];
+
+  let html = `
+    <table>
+      <tr>
+        <th>День недели</th>
+        <th>Средняя выручка</th>
+        <th>Сред. гости</th>
+        <th>Сред. чеки</th>
+        <th>Сред. чек</th>
+      </tr>
+  `;
+
+  sums.forEach((s, i) => {
+    if (!s.days) return;
+    const avgRev = s.revenue / s.days;
+    const avgGuests = s.guests / s.days;
+    const avgChecks = s.checks / s.days;
+    const avgCheck = s.checks ? s.revenue / s.checks : 0;
+
+    html += `
+      <tr>
+        <td>${names[i]}</td>
+        <td>${Math.round(avgRev).toLocaleString()} ₽</td>
+        <td>${avgGuests.toFixed(1)}</td>
+        <td>${avgChecks.toFixed(1)}</td>
+        <td>${Math.round(avgCheck)} ₽</td>
+      </tr>
+    `;
+  });
+
+  html += "</table>";
+  document.getElementById("weekdayStats").innerHTML = html;
+}
+
+// ======================================================
 // СРАВНЕНИЕ С ПРОШЛЫМ ГОДОМ (месяц)
 // ======================================================
 
 async function loadCompareLastYear(year, month) {
-  const thisRows = await (await fetch(`/api/month-stats?year=${year}&month=${month}`)).json();
-  const prevRows = await (await fetch(`/api/month-stats?year=${year - 1}&month=${month}`)).json();
+  const thisRows = await (await fetch(
+    `/api/month-stats?year=${year}&month=${month}`
+  )).json();
+  const prevRows = await (await fetch(
+    `/api/month-stats?year=${year - 1}&month=${month}`
+  )).json();
 
   const tRev = thisRows.reduce((s, r) => s + (r.revenue || 0), 0);
   const tGuests = thisRows.reduce((s, r) => s + (r.guests || 0), 0);
@@ -269,32 +379,47 @@ async function loadCompareLastYear(year, month) {
 }
 
 // ======================================================
-// МЕТРИКИ ОФИЦИАНТОВ (таблица в отчётах)
+// МЕТРИКИ ОФИЦИАНТОВ (таблица + рейтинги)
 // ======================================================
 
-async function loadWaitersMetrics(period, year, month) {
+async function loadWaitersMetrics(period, year, month, waiterName = "") {
   function getRange(period) {
     const y = year;
     const m = month;
     let start, end;
 
-    if (period === "w1") { start = `${y}-${pad(m)}-01`; end = `${y}-${pad(m)}-07`; }
-    else if (period === "w2") { start = `${y}-${pad(m)}-08`; end = `${y}-${pad(m)}-14`; }
-    else if (period === "w3") { start = `${y}-${pad(m)}-15`; end = `${y}-${pad(m)}-21`; }
-    else if (period === "w4") { start = `${y}-${pad(m)}-22`; end = `${y}-${pad(m)}-28`; }
-    else if (period === "w5") { start = `${y}-${pad(m)}-29`; end = `${y}-${pad(m)}-31`; }
-    else {
+    if (period === "w1") {
+      start = `${y}-${pad(m)}-01`;
+      end = `${y}-${pad(m)}-07`;
+    } else if (period === "w2") {
+      start = `${y}-${pad(m)}-08`;
+      end = `${y}-${pad(m)}-14`;
+    } else if (period === "w3") {
+      start = `${y}-${pad(m)}-15`;
+      end = `${y}-${pad(m)}-21`;
+    } else if (period === "w4") {
+      start = `${y}-${pad(m)}-22`;
+      end = `${y}-${pad(m)}-28`;
+    } else if (period === "w5") {
+      start = `${y}-${pad(m)}-29`;
+      end = `${y}-${pad(m)}-31`;
+    } else {
       const lastDay = new Date(y, m, 0).getDate();
       start = `${y}-${pad(m)}-01`;
       end = `${y}-${pad(m)}-${pad(lastDay)}`;
     }
-
     return { start, end };
   }
 
   const { start, end } = getRange(period);
 
-  const res = await fetch(`/api/waiters?start=${start}&end=${end}`);
+  const qs = new URLSearchParams({
+    start,
+    end,
+    waiter: waiterName || ""
+  });
+
+  const res = await fetch(`/api/waiters?${qs.toString()}`);
   const rows = await res.json();
 
   let html = `
@@ -305,12 +430,26 @@ async function loadWaitersMetrics(period, year, month) {
         <th>Гости</th>
         <th>Чеки</th>
         <th>Блюда</th>
-        <th>Средний чек</th>
+        <th>Ср. чек</th>
+        <th>Выручка/гостя</th>
+        <th>Блюда/чек</th>
+        <th>Блюда/гостя</th>
         <th>Наполняемость</th>
       </tr>
   `;
 
   rows.forEach(r => {
+    const avgCheck = r.average_check || 0;
+    const revPerGuest = r.total_guests
+      ? r.total_revenue / r.total_guests
+      : 0;
+    const dishesPerCheck = r.total_checks
+      ? r.total_dishes / r.total_checks
+      : 0;
+    const dishesPerGuest = r.total_guests
+      ? r.total_dishes / r.total_guests
+      : 0;
+
     html += `
       <tr>
         <td>${r.waiter}</td>
@@ -318,7 +457,10 @@ async function loadWaitersMetrics(period, year, month) {
         <td>${r.total_guests || 0}</td>
         <td>${r.total_checks || 0}</td>
         <td>${r.total_dishes || 0}</td>
-        <td>${Math.round(r.average_check || 0)} ₽</td>
+        <td>${Math.round(avgCheck)} ₽</td>
+        <td>${Math.round(revPerGuest)} ₽</td>
+        <td>${dishesPerCheck.toFixed(2)}</td>
+        <td>${dishesPerGuest.toFixed(2)}</td>
         <td>${(r.fill || 0).toFixed(2)}</td>
       </tr>
     `;
@@ -326,16 +468,61 @@ async function loadWaitersMetrics(period, year, month) {
 
   html += "</table>";
   document.getElementById("waiterStats").innerHTML = html;
+
+  const ratingsDiv = document.getElementById("waiterRatings");
+  if (!ratingsDiv) return;
+
+  if (!waiterName && rows.length > 0) {
+    const byAvgCheck = [...rows].sort(
+      (a, b) => (b.average_check || 0) - (a.average_check || 0)
+    );
+    const byFill = [...rows].sort((a, b) => (b.fill || 0) - (a.fill || 0));
+
+    const top3Check = byAvgCheck.slice(0, 3);
+    const bot3Check = byAvgCheck.slice(-3).reverse();
+    const top3Fill = byFill.slice(0, 3);
+    const bot3Fill = byFill.slice(-3).reverse();
+
+    let txt = "<h3>Рейтинги официантов</h3>";
+
+    txt += "<p><b>TOP-3 по среднему чеку:</b><br>";
+    top3Check.forEach(r => {
+      txt += `${r.waiter}: ${Math.round(r.average_check || 0)} ₽<br>`;
+    });
+    txt += "</p>";
+
+    txt += "<p><b>BOTTOM-3 по среднему чеку:</b><br>";
+    bot3Check.forEach(r => {
+      txt += `${r.waiter}: ${Math.round(r.average_check || 0)} ₽<br>`;
+    });
+    txt += "</p>";
+
+    txt += "<p><b>TOP-3 по наполняемости:</b><br>";
+    top3Fill.forEach(r => {
+      txt += `${r.waiter}: ${(r.fill || 0).toFixed(2)}<br>`;
+    });
+    txt += "</p>";
+
+    txt += "<p><b>BOTTOM-3 по наполняемости:</b><br>";
+    bot3Fill.forEach(r => {
+      txt += `${r.waiter}: ${(r.fill || 0).toFixed(2)}<br>`;
+    });
+    txt += "</p>";
+
+    ratingsDiv.innerHTML = txt;
+  } else {
+    ratingsDiv.innerHTML = "";
+  }
 }
 
 // ======================================================
-// DOMContentLoaded — ИНИЦИАЛИЗАЦИЯ СТРАНИЦ
+// DOMContentLoaded — ИНИЦИАЛИЗАЦИЯ
 // ======================================================
 
 document.addEventListener("DOMContentLoaded", () => {
   let { year, month } = getCurrentYearMonth();
 
-  // ---------- СТРАНИЦА ВВОДА ДАННЫХ ----------
+  // ---------- ВВОД ДАННЫХ ----------
   const dayForm = document.getElementById("dayForm");
   const waiterForm = document.getElementById("waiterForm");
   const dayDateInput = document.getElementById("dayDate");
@@ -368,7 +555,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       await fetch("/api/add-day", {
         method: "POST",
-        headers: {"Content-Type":"application/json"},
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
       });
 
@@ -408,7 +595,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       await fetch("/api/delete-waiters-day", {
         method: "POST",
-        headers: {"Content-Type":"application/json"},
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ date })
       });
 
@@ -424,7 +611,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         await fetch("/api/add-waiter", {
           method: "POST",
-          headers: {"Content-Type":"application/json"},
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ date, waiter, revenue, guests, checks, dishes })
         });
       }
@@ -439,20 +626,37 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // ---------- СТРАНИЦА ОТЧЁТОВ ----------
+  // ---------- ОТЧЁТЫ ----------
   if (document.getElementById("weeklyPlan")) {
     const reportMonthInput = document.getElementById("reportMonth");
     if (reportMonthInput) {
       reportMonthInput.value = `${year}-${pad(month)}`;
     }
 
+    const waiterFilterSelect = document.getElementById("waiterFilter");
+    (async () => {
+      await ensureWaitersList();
+      if (waiterFilterSelect) {
+        waiterFilterSelect.innerHTML =
+          '<option value="">Все</option>' +
+          waiterList
+            .map(w => `<option value="${w.name}">${w.name}</option>`)
+            .join("");
+      }
+    })();
+
     async function reloadReports() {
       await loadPlan(year, month);
+      await loadForecast(year, month);
       await loadWeeklyPlan(year, month);
+      await loadWeekdayStats(year, month);
       await loadCompareLastYear(year, month);
+
       const periodSelect = document.getElementById("waiterPeriod");
-      const p = periodSelect ? periodSelect.value : "w1";
-      await loadWaitersMetrics(p, year, month);
+      const filterSelect = document.getElementById("waiterFilter");
+      const period = periodSelect ? periodSelect.value : "w1";
+      const waiterName = filterSelect ? filterSelect.value : "";
+      await loadWaitersMetrics(period, year, month, waiterName);
     }
 
     reloadReports();
@@ -471,8 +675,69 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const periodSelect = document.getElementById("waiterPeriod");
     if (periodSelect) {
-      periodSelect.addEventListener("change", e => {
-        loadWaitersMetrics(e.target.value, year, month);
+      periodSelect.addEventListener("change", () => {
+        const filterSelect = document.getElementById("waiterFilter");
+        const waiterName = filterSelect ? filterSelect.value : "";
+        loadWaitersMetrics(periodSelect.value, year, month, waiterName);
+      });
+    }
+
+    if (waiterFilterSelect) {
+      waiterFilterSelect.addEventListener("change", () => {
+        const periodSelect = document.getElementById("waiterPeriod");
+        const period = periodSelect ? periodSelect.value : "w1";
+        loadWaitersMetrics(period, year, month, waiterFilterSelect.value);
+      });
+    }
+
+    const exportBtn = document.getElementById("exportWaitersCsv");
+    if (exportBtn) {
+      exportBtn.addEventListener("click", () => {
+        const periodSelect = document.getElementById("waiterPeriod");
+        const filterSelect = document.getElementById("waiterFilter");
+        const period = periodSelect ? periodSelect.value : "w1";
+        const waiterName = filterSelect ? filterSelect.value : "";
+
+        function getRange(period) {
+          const y = year;
+          const m = month;
+          let start, end;
+
+          if (period === "w1") {
+            start = `${y}-${pad(m)}-01`;
+            end = `${y}-${pad(m)}-07`;
+          } else if (period === "w2") {
+            start = `${y}-${pad(m)}-08`;
+            end = `${y}-${pad(m)}-14`;
+          } else if (period === "w3") {
+            start = `${y}-${pad(m)}-15`;
+            end = `${y}-${pad(m)}-21`;
+          } else if (period === "w4") {
+            start = `${y}-${pad(m)}-22`;
+            end = `${y}-${pad(m)}-28`;
+          } else if (period === "w5") {
+            start = `${y}-${pad(m)}-29`;
+            end = `${y}-${pad(m)}-31`;
+          } else {
+            const lastDay = new Date(y, m, 0).getDate();
+            start = `${y}-${pad(m)}-01`;
+            end = `${y}-${pad(m)}-${pad(lastDay)}`;
+          }
+          return { start, end };
+        }
+
+        const { start, end } = getRange(period);
+
+        const qs = new URLSearchParams({
+          start,
+          end,
+          waiter: waiterName || "",
+          year: String(year),
+          month: String(month),
+          period
+        });
+
+        window.open(`/api/waiters-export?${qs.toString()}`, "_blank");
       });
     }
 
@@ -484,7 +749,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         await fetch("/api/save-plan", {
           method: "POST",
-          headers: {"Content-Type":"application/json"},
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ year, month, plan: val })
         });
 

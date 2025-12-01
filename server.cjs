@@ -46,9 +46,8 @@ CREATE TABLE IF NOT EXISTS plan_stats (
 );
 `);
 
-
 // ======================================
-// API: Данные дня
+// API: данные дня
 // ======================================
 
 app.post("/api/add-day", (req, res) => {
@@ -66,36 +65,40 @@ app.post("/api/add-day", (req, res) => {
 
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ ok:false, error:e.message });
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
-
 
 app.get("/api/day", (req, res) => {
   const { date } = req.query;
 
   const day = db.prepare(`
-    SELECT revenue, guests, checks FROM daily_stats WHERE date = ?
+    SELECT revenue, guests, checks
+    FROM daily_stats
+    WHERE date = ?
   `).get(date);
 
   const waiters = db.prepare(`
     SELECT waiter, revenue, guests, checks, dishes
-    FROM waiters_stats WHERE date = ?
+    FROM waiters_stats
+    WHERE date = ?
   `).all(date);
 
   res.json({ day, waiters });
 });
-
 
 // ======================================
 // API: справочник официантов
 // ======================================
 
 app.get("/api/waiters/list", (req, res) => {
-  const list = db.prepare(`SELECT name FROM waiters_list ORDER BY name`).all();
+  const list = db.prepare(`
+    SELECT name
+    FROM waiters_list
+    ORDER BY name
+  `).all();
   res.json(list);
 });
-
 
 // ======================================
 // API: удалить всех официантов за дату
@@ -106,15 +109,14 @@ app.post("/api/delete-waiters-day", (req, res) => {
 
   try {
     db.prepare(`DELETE FROM waiters_stats WHERE date = ?`).run(date);
-    res.json({ ok:true });
-  } catch(e) {
-    res.status(500).json({ ok:false, error:e.message });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 
-
 // ======================================
-// API: добавить/обновить официанта
+// API: добавить показатели официанта
 // ======================================
 
 app.post("/api/add-waiter", (req, res) => {
@@ -133,16 +135,15 @@ app.post("/api/add-waiter", (req, res) => {
 
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ ok:false, error:e.message });
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
-
 
 // ======================================
 // API: план месяца
 // ======================================
 
-app.post("/api/save-plan", (req,res)=>{
+app.post("/api/save-plan", (req, res) => {
   const { year, month, plan } = req.body;
 
   try {
@@ -153,31 +154,31 @@ app.post("/api/save-plan", (req,res)=>{
         plan_value = excluded.plan_value
     `).run(year, month, plan);
 
-    res.json({ ok:true });
-  } catch(e) {
-    res.status(500).json({ ok:false, error:e.message });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 
-app.get("/api/plan", (req,res)=>{
+app.get("/api/plan", (req, res) => {
   const { year, month } = req.query;
 
   const row = db.prepare(`
-    SELECT plan_value FROM plan_stats
+    SELECT plan_value
+    FROM plan_stats
     WHERE year = ? AND month = ?
   `).get(year, month);
 
   res.json({ plan: row ? row.plan_value : 0 });
 });
 
-
 // ======================================
-// API: данные месяца
+// API: данные месяца по дням
 // ======================================
 
 app.get("/api/month-stats", (req, res) => {
   const { year, month } = req.query;
-  const prefix = `${year}-${String(month).padStart(2,"0")}`;
+  const prefix = `${year}-${String(month).padStart(2, "0")}`;
 
   const rows = db.prepare(`
     SELECT date, revenue, guests, checks
@@ -189,16 +190,16 @@ app.get("/api/month-stats", (req, res) => {
   res.json(rows);
 });
 
-
 // ======================================
 // API: метрики официантов по диапазону
+//  (с optional фильтром по waiter)
 // ======================================
 
-app.get("/api/waiters", (req,res)=>{
-  const { start, end } = req.query;
+app.get("/api/waiters", (req, res) => {
+  const { start, end, waiter } = req.query;
 
   try {
-    const rows = db.prepare(`
+    let sql = `
       SELECT waiter,
              SUM(revenue) AS total_revenue,
              SUM(guests) AS total_guests,
@@ -206,22 +207,94 @@ app.get("/api/waiters", (req,res)=>{
              SUM(dishes) AS total_dishes
       FROM waiters_stats
       WHERE date >= ? AND date <= ?
-      GROUP BY waiter
-      ORDER BY total_revenue DESC
-    `).all(start, end);
+    `;
+    const params = [start, end];
 
-    rows.forEach(r=>{
+    if (waiter && waiter.trim() !== "") {
+      sql += " AND waiter = ?";
+      params.push(waiter);
+    }
+
+    sql += " GROUP BY waiter ORDER BY total_revenue DESC";
+
+    const rows = db.prepare(sql).all(...params);
+
+    rows.forEach(r => {
       r.average_check = r.total_checks ? r.total_revenue / r.total_checks : 0;
       r.fill = r.total_checks ? r.total_dishes / r.total_checks : 0;
     });
 
     res.json(rows);
-
-  } catch(e){
-    res.status(500).json({ ok:false, error:e.message });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 
+// ======================================
+// API: экспорт метрик официантов в CSV
+// ======================================
+
+app.get("/api/waiters-export", (req, res) => {
+  const { start, end, waiter, year, month, period } = req.query;
+
+  try {
+    let sql = `
+      SELECT waiter,
+             SUM(revenue) AS total_revenue,
+             SUM(guests) AS total_guests,
+             SUM(checks) AS total_checks,
+             SUM(dishes) AS total_dishes
+      FROM waiters_stats
+      WHERE date >= ? AND date <= ?
+    `;
+    const params = [start, end];
+
+    if (waiter && waiter.trim() !== "") {
+      sql += " AND waiter = ?";
+      params.push(waiter);
+    }
+
+    sql += " GROUP BY waiter ORDER BY total_revenue DESC";
+
+    const rows = db.prepare(sql).all(...params);
+
+    let csv = "waiter,total_revenue,total_guests,total_checks,total_dishes,average_check,fill\n";
+    rows.forEach(r => {
+      const avg = r.total_checks ? r.total_revenue / r.total_checks : 0;
+      const fill = r.total_checks ? r.total_dishes / r.total_checks : 0;
+      csv += [
+        `"${r.waiter}"`,
+        r.total_revenue || 0,
+        r.total_guests || 0,
+        r.total_checks || 0,
+        r.total_dishes || 0,
+        avg.toFixed(2),
+        fill.toFixed(2)
+      ].join(",") + "\n";
+    });
+
+    const y = year || "year";
+    const m = month || "month";
+    const p = period || "period";
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="waiters_${y}_${m}_${p}.csv"`
+    );
+    res.send(csv);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ======================================
+// Скачивание базы (резервная копия)
+// ======================================
+
+app.get("/download-db", (req, res) => {
+  res.download(dbPath, "stats.sqlite");
+});
 
 // ======================================
 // SERVER START

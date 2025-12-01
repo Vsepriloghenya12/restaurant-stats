@@ -40,10 +40,22 @@
     </form>
   </div>
 
+  <!-- ПРОГНОЗ МЕСЯЦА -->
+  <div class="block">
+    <h2>Прогноз месяца</h2>
+    <div id="forecastBlock">Загрузка...</div>
+  </div>
+
   <!-- ВЫПОЛНЕНИЕ ПЛАНА ПО НЕДЕЛЯМ -->
   <div class="block">
     <h2>Выполнение плана по неделям</h2>
     <div id="weeklyPlan">Загрузка...</div>
+  </div>
+
+  <!-- СТАТИСТИКА ПО ДНЯМ НЕДЕЛИ -->
+  <div class="block">
+    <h2>Статистика по дням недели</h2>
+    <div id="weekdayStats">Загрузка...</div>
   </div>
 
   <!-- СРАВНЕНИЕ С ПРОШЛЫМ ГОДОМ -->
@@ -56,18 +68,36 @@
   <div class="block">
     <h2>Метрики по официантам</h2>
 
-    <label>Период:
-      <select id="waiterPeriod">
-        <option value="w1">Неделя 1</option>
-        <option value="w2">Неделя 2</option>
-        <option value="w3">Неделя 3</option>
-        <option value="w4">Неделя 4</option>
-        <option value="w5">Неделя 5</option>
-        <option value="month">Месяц</option>
-      </select>
-    </label>
+    <div class="row">
+      <label>Период:
+        <select id="waiterPeriod">
+          <option value="w1">Неделя 1</option>
+          <option value="w2">Неделя 2</option>
+          <option value="w3">Неделя 3</option>
+          <option value="w4">Неделя 4</option>
+          <option value="w5">Неделя 5</option>
+          <option value="month">Месяц</option>
+        </select>
+      </label>
+
+      <label>Официант:
+        <select id="waiterFilter">
+          <option value="">Все</option>
+        </select>
+      </label>
+
+      <button type="button" id="exportWaitersCsv">
+        Экспорт CSV
+      </button>
+    </div>
 
     <div id="waiterStats">Загрузка...</div>
+    <div id="waiterRatings"></div>
+  </div>
+
+  <div class="block">
+    <h2>Резервная копия</h2>
+    <a href="/download-db" class="btn">Скачать базу (stats.sqlite)</a>
   </div>
 
   <a href="index.html" class="btn">Назад</a>
