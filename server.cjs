@@ -52,6 +52,13 @@ CREATE TABLE IF NOT EXISTS plan_stats (
   plan_value REAL,
   UNIQUE(year, month)
 );
+
+CREATE TABLE IF NOT EXISTS category_stats (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT,
+  category TEXT,
+  revenue REAL
+);
 `);
 
 // ======================================
@@ -296,8 +303,26 @@ app.get("/api/waiters-export", (req, res) => {
 });
 
 // ======================================
+// API: данные категорий за месяц
+// ======================================
+
+app.get("/api/categories-month", (req, res) => {
+  const { year, month } = req.query;
+  const prefix = `${year}-${String(month).padStart(2, "0")}`;
+
+  const rows = db.prepare(`
+    SELECT category, SUM(revenue) AS total_revenue
+    FROM category_stats
+    WHERE date LIKE ?
+    GROUP BY category
+    ORDER BY total_revenue DESC
+  `).all(`${prefix}%`);
+
+  res.json(rows);
+});
+
+// ======================================
 // API: ЗАГРУЗКА МЕСЯЦА ОБЩЕЙ ВЫРУЧКИ ИЗ EXCEL
-// (с поддержкой числовых дат)
 // ======================================
 
 app.post("/api/upload-month", upload.single("file"), (req, res) => {
@@ -412,7 +437,6 @@ app.post("/api/upload-month", upload.single("file"), (req, res) => {
 
 // ======================================
 // ЗАГРУЗКА ДАННЫХ ПО ОФИЦИАНТАМ ИЗ EXCEL
-// УМНЫЙ ПАРСЕР + ЧИСЛОВЫЕ ДАТЫ + ПРОТЯГИВАНИЕ ДАТЫ/ИМЕНИ
 // ======================================
 
 app.post("/api/upload-waiters-month", upload.single("file"), (req, res) => {
@@ -434,14 +458,12 @@ app.post("/api/upload-waiters-month", upload.single("file"), (req, res) => {
         .send('<html><body><p>В файле нет данных</p><p><a href="/index.html">Назад</a></p></body></html>');
     }
 
-    // Собираем все заголовки
     const headersSet = new Set();
     for (const r of rows) {
       Object.keys(r).forEach(k => headersSet.add(k));
     }
     const headers = Array.from(headersSet);
 
-    // Поиск колонки по части названия
     function findKey(patterns) {
       const lowerPatterns = patterns.map(p => p.toLowerCase());
       for (const h of headers) {
@@ -473,7 +495,6 @@ app.post("/api/upload-waiters-month", upload.single("file"), (req, res) => {
         );
     }
 
-    // key = date|waiter
     const byKey = new Map();
     const datesSet = new Set();
 
@@ -484,7 +505,6 @@ app.post("/api/upload-waiters-month", upload.single("file"), (req, res) => {
       const rawDate = row[dateKey];
       const rawWaiter = row[waiterKey];
 
-      // ---- дата: если пустая, используем предыдущую ----
       let isoDate = null;
       if (rawDate !== null && rawDate !== undefined && String(rawDate).trim() !== "") {
         if (rawDate instanceof Date) {
@@ -515,7 +535,6 @@ app.post("/api/upload-waiters-month", upload.single("file"), (req, res) => {
         isoDate = lastIsoDate;
       }
 
-      // ---- официант: если пустой, используем предыдущего ----
       let waiterName = null;
       if (rawWaiter !== null && rawWaiter !== undefined && String(rawWaiter).trim() !== "") {
         waiterName = String(rawWaiter).trim();
@@ -556,21 +575,11 @@ app.post("/api/upload-waiters-month", upload.single("file"), (req, res) => {
         .send(
           `<html><body>
              <p>Не удалось извлечь ни одной строки по официантам.</p>
-             <p>Использованные ключи:</p>
-             <ul>
-               <li>Дата: ${dateKey}</li>
-               <li>Официант: ${waiterKey}</li>
-               <li>Выручка: ${revKey || "не найдена"}</li>
-               <li>Гостей: ${guestsKey || "не найдена"}</li>
-               <li>Чеков: ${checksKey || "не найдена"}</li>
-               <li>Блюда: ${dishesKey || "не найдена"}</li>
-             </ul>
              <p><a href="/index.html">Назад</a></p>
            </body></html>`
         );
     }
 
-    // Стираем старые записи за все даты из файла
     const deleteStmt = db.prepare(`DELETE FROM waiters_stats WHERE date = ?`);
     for (const d of datesSet) {
       deleteStmt.run(d);
@@ -619,7 +628,164 @@ app.post("/api/upload-waiters-month", upload.single("file"), (req, res) => {
 });
 
 // ======================================
-// Скачивание базы (резервная копия)
+// ЗАГРУЗКА ДАННЫХ ПО КАТЕГОРИЯМ ИЗ EXCEL
+// ======================================
+
+app.post("/api/upload-categories-month", upload.single("file"), (req, res) => {
+  if (!req.file) {
+    return res
+      .status(400)
+      .send('<html><body><p>Файл не получен</p><p><a href="/index.html">Назад</a></p></body></html>');
+  }
+
+  try {
+    const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const rows = xlsx.utils.sheet_to_json(sheet, { defval: null });
+
+    if (!rows || rows.length === 0) {
+      return res
+        .status(400)
+        .send('<html><body><p>В файле нет данных</p><p><a href="/index.html">Назад</a></p></body></html>');
+    }
+
+    const headersSet = new Set();
+    for (const r of rows) {
+      Object.keys(r).forEach(k => headersSet.add(k));
+    }
+    const headers = Array.from(headersSet);
+
+    function findKey(patterns) {
+      const lowerPatterns = patterns.map(p => p.toLowerCase());
+      for (const h of headers) {
+        const hl = h.toLowerCase();
+        if (lowerPatterns.some(p => hl.includes(p))) {
+          return h;
+        }
+      }
+      return null;
+    }
+
+    const dateKey = findKey(["операц", "дата", "date"]);
+    const catKey  = findKey(["категор", "подраздел", "отдел", "тип", "группа"]);
+    const revKey  = findKey(["выручк", "продаж", "сумма"]);
+
+    if (!dateKey || !catKey || !revKey) {
+      return res
+        .status(400)
+        .send(
+          `<html><body>
+             <p>Не удалось определить колонки даты, категории или выручки.</p>
+             <p>Найденные заголовки:</p>
+             <pre>${headers.join("\n")}</pre>
+             <p><a href="/index.html">Назад</a></p>
+           </body></html>`
+        );
+    }
+
+    const byKey = new Map(); // date|category -> revenue
+    const datesSet = new Set();
+    let lastIsoDate = null;
+
+    for (const row of rows) {
+      const rawDate = row[dateKey];
+      const rawCat  = row[catKey];
+
+      let isoDate = null;
+      if (rawDate !== null && rawDate !== undefined && String(rawDate).trim() !== "") {
+        if (rawDate instanceof Date) {
+          const d = rawDate;
+          isoDate = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+        } else if (typeof rawDate === "number") {
+          const d = xlsx.SSF.parse_date_code(rawDate);
+          if (d) {
+            isoDate = `${d.y}-${pad2(d.m)}-${pad2(d.d)}`;
+          }
+        } else {
+          const s = String(rawDate).split(",")[0].trim();
+          const parts = s.split(".");
+          if (parts.length === 3) {
+            const dd = pad2(parts[0]);
+            const mm = pad2(parts[1]);
+            const yyyy = parts[2];
+            isoDate = `${yyyy}-${mm}-${dd}`;
+          } else {
+            const s2 = String(rawDate).substring(0, 10);
+            if (/^\d{4}-\d{2}-\d{2}$/.test(s2)) {
+              isoDate = s2;
+            }
+          }
+        }
+        lastIsoDate = isoDate;
+      } else {
+        isoDate = lastIsoDate;
+      }
+
+      if (!isoDate) continue;
+
+      const cat = rawCat ? String(rawCat).trim() : "";
+      if (!cat) continue;
+
+      const revenue = Number(row[revKey]) || 0;
+      if (!revenue) continue;
+
+      const key = `${isoDate}|${cat}`;
+      const prev = byKey.get(key) || { date: isoDate, category: cat, revenue: 0 };
+      prev.revenue += revenue;
+      byKey.set(key, prev);
+      datesSet.add(isoDate);
+    }
+
+    if (byKey.size === 0) {
+      return res
+        .status(400)
+        .send(
+          `<html><body>
+             <p>Не удалось извлечь ни одной строки по категориям.</p>
+             <p><a href="/index.html">Назад</a></p>
+           </body></html>`
+        );
+    }
+
+    const deleteStmt = db.prepare(`DELETE FROM category_stats WHERE date = ?`);
+    for (const d of datesSet) {
+      deleteStmt.run(d);
+    }
+
+    const insertStmt = db.prepare(`
+      INSERT INTO category_stats (date, category, revenue)
+      VALUES (?, ?, ?)
+    `);
+
+    let importedRows = 0;
+    for (const [, row] of byKey) {
+      insertStmt.run(row.date, row.category, row.revenue);
+      importedRows++;
+    }
+
+    res.send(
+      `<html><body>
+         <p>Импортировано записей по категориям: <b>${importedRows}</b></p>
+         <p>Затронуто дат: <b>${datesSet.size}</b></p>
+         <p><a href="/index.html">Назад</a></p>
+       </body></html>`
+    );
+  } catch (e) {
+    console.error(e);
+    res
+      .status(500)
+      .send(
+        `<html><body>
+           <p>Ошибка импорта категорий: ${e.message}</p>
+           <p><a href="/index.html">Назад</a></p>
+         </body></html>`
+      );
+  }
+});
+
+// ======================================
+// Скачивание базы
 // ======================================
 
 app.get("/download-db", (req, res) => {

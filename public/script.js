@@ -1,7 +1,3 @@
-// ======================================================
-// ВСПОМОГАТЕЛЬНЫЕ
-// ======================================================
-
 function getCurrentYearMonth() {
   const now = new Date();
   return { year: now.getFullYear(), month: now.getMonth() + 1 };
@@ -11,13 +7,11 @@ function pad(n) {
   return String(n).padStart(2, "0");
 }
 
-// Глобальный кеш списка официантов
 let waiterList = [];
 
-// Получаем список официантов из справочника
 async function fetchWaitersList() {
   const res = await fetch("/api/waiters/list");
-  const list = await res.json(); // [{name: "..."}]
+  const list = await res.json();
   waiterList = list;
   return list;
 }
@@ -36,10 +30,6 @@ function buildWaiterOptions(selectedName = "") {
     })
     .join("");
 }
-
-// ======================================================
-// ДОБАВЛЕНИЕ / УДАЛЕНИЕ СТРОК ОФИЦИАНТОВ (ФОРМА ВВОДА)
-// ======================================================
 
 async function addWaiterRow(prefill) {
   const container = document.getElementById("waiterRows");
@@ -93,17 +83,12 @@ function removeLastWaiterRow() {
   }
 }
 
-// ======================================================
-// ЗАГРУЗКА ДАННЫХ ДНЯ (общие + официанты)
-// ======================================================
-
 async function loadDayData(date) {
   if (!date) return;
 
   const res = await fetch(`/api/day?date=${date}`);
   const data = await res.json();
 
-  // общие показатели дня
   if (data.day) {
     document.getElementById("dayRevenue").value = data.day.revenue;
     document.getElementById("dayGuests").value = data.day.guests;
@@ -114,7 +99,6 @@ async function loadDayData(date) {
     document.getElementById("dayChecks").value = "";
   }
 
-  // официанты
   const container = document.getElementById("waiterRows");
   if (!container) return;
   container.innerHTML = "";
@@ -136,9 +120,7 @@ async function loadDayData(date) {
   }
 }
 
-// ======================================================
-// ПЛАН МЕСЯЦА
-// ======================================================
+// ---------------- ПЛАН ----------------
 
 async function loadPlan(year, month) {
   const planRes = await fetch(`/api/plan?year=${year}&month=${month}`);
@@ -175,9 +157,7 @@ async function loadPlan(year, month) {
   if (planInput) planInput.value = plan || "";
 }
 
-// ======================================================
-// ПРОГНОЗ МЕСЯЦА
-// ======================================================
+// -------------- ПРОГНОЗ --------------
 
 async function loadForecast(year, month) {
   const resThis = await fetch(`/api/month-stats?year=${year}&month=${month}`);
@@ -217,9 +197,7 @@ async function loadForecast(year, month) {
   `;
 }
 
-// ======================================================
-// ВЫПОЛНЕНИЕ ПЛАНА ПО НЕДЕЛЯМ + СРЕДНИЙ ЧЕК
-// ======================================================
+// ---------- ВЫПОЛНЕНИЕ ПЛАНА ПО НЕДЕЛЯМ ----------
 
 async function loadWeeklyPlan(year, month) {
   const resThis = await fetch(`/api/month-stats?year=${year}&month=${month}`);
@@ -289,9 +267,7 @@ async function loadWeeklyPlan(year, month) {
   document.getElementById("weeklyPlan").innerHTML = html;
 }
 
-// ======================================================
-// СТАТИСТИКА ПО ДНЯМ НЕДЕЛИ
-// ======================================================
+// ---------- СТАТИСТИКА ПО ДНЯМ НЕДЕЛИ ----------
 
 async function loadWeekdayStats(year, month) {
   const res = await fetch(`/api/month-stats?year=${year}&month=${month}`);
@@ -303,7 +279,7 @@ async function loadWeekdayStats(year, month) {
 
   rows.forEach(r => {
     const d = new Date(r.date + "T00:00:00");
-    const wd = d.getDay(); // 0-вс,1-пн...
+    const wd = d.getDay();
     const slot = sums[wd];
     slot.revenue += r.revenue || 0;
     slot.guests += r.guests || 0;
@@ -347,9 +323,62 @@ async function loadWeekdayStats(year, month) {
   document.getElementById("weekdayStats").innerHTML = html;
 }
 
-// ======================================================
-// СРАВНЕНИЕ С ПРОШЛЫМ ГОДОМ (месяц)
-// ======================================================
+// ---------- ДОЛИ КАТЕГОРИЙ ----------
+
+async function loadCategoryShares(year, month) {
+  const resThis = await fetch(`/api/categories-month?year=${year}&month=${month}`);
+  const thisRows = await resThis.json();
+
+  const resPrev = await fetch(`/api/categories-month?year=${year - 1}&month=${month}`);
+  const prevRows = await resPrev.json();
+
+  const totalThis = thisRows.reduce((s, r) => s + (r.total_revenue || 0), 0);
+  const totalPrev = prevRows.reduce((s, r) => s + (r.total_revenue || 0), 0);
+
+  const mapPrev = new Map();
+  prevRows.forEach(r => mapPrev.set(r.category, r.total_revenue || 0));
+
+  const catsSet = new Set();
+  thisRows.forEach(r => catsSet.add(r.category));
+  prevRows.forEach(r => catsSet.add(r.category));
+
+  let html = `
+    <table>
+      <tr>
+        <th>Категория</th>
+        <th>${year} выручка</th>
+        <th>${year} доля</th>
+        <th>${year - 1} выручка</th>
+        <th>${year - 1} доля</th>
+        <th>Δ доли (п.п.)</th>
+      </tr>
+  `;
+
+  const cats = Array.from(catsSet);
+  cats.forEach(cat => {
+    const revThis = (thisRows.find(r => r.category === cat)?.total_revenue) || 0;
+    const revPrev = mapPrev.get(cat) || 0;
+    const shareThis = totalThis ? (revThis / totalThis) * 100 : 0;
+    const sharePrev = totalPrev ? (revPrev / totalPrev) * 100 : 0;
+    const diff = shareThis - sharePrev;
+
+    html += `
+      <tr>
+        <td>${cat}</td>
+        <td>${revThis.toLocaleString()} ₽</td>
+        <td>${shareThis.toFixed(1)}%</td>
+        <td>${revPrev.toLocaleString()} ₽</td>
+        <td>${sharePrev.toFixed(1)}%</td>
+        <td>${diff.toFixed(1)} п.п.</td>
+      </tr>
+    `;
+  });
+
+  html += "</table>";
+  document.getElementById("categoryShares").innerHTML = html;
+}
+
+// ---------- СРАВНЕНИЕ С ПРОШЛЫМ ГОДОМ ----------
 
 async function loadCompareLastYear(year, month) {
   const thisRows = await (await fetch(
@@ -378,9 +407,7 @@ async function loadCompareLastYear(year, month) {
   `;
 }
 
-// ======================================================
-// МЕТРИКИ ОФИЦИАНТОВ (таблица + рейтинги)
-// ======================================================
+// ---------- МЕТРИКИ ОФИЦИАНТОВ ----------
 
 async function loadWaitersMetrics(period, year, month, waiterName = "") {
   function getRange(period) {
@@ -515,14 +542,11 @@ async function loadWaitersMetrics(period, year, month, waiterName = "") {
   }
 }
 
-// ======================================================
-// DOMContentLoaded — ИНИЦИАЛИЗАЦИЯ
-// ======================================================
+// ---------- ИНИЦИАЛИЗАЦИЯ ----------
 
 document.addEventListener("DOMContentLoaded", () => {
   let { year, month } = getCurrentYearMonth();
 
-  // ---------- ВВОД ДАННЫХ ----------
   const dayForm = document.getElementById("dayForm");
   const waiterForm = document.getElementById("waiterForm");
   const dayDateInput = document.getElementById("dayDate");
@@ -626,7 +650,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // ---------- ОТЧЁТЫ ----------
   if (document.getElementById("weeklyPlan")) {
     const reportMonthInput = document.getElementById("reportMonth");
     if (reportMonthInput) {
@@ -650,6 +673,7 @@ document.addEventListener("DOMContentLoaded", () => {
       await loadForecast(year, month);
       await loadWeeklyPlan(year, month);
       await loadWeekdayStats(year, month);
+      await loadCategoryShares(year, month);
       await loadCompareLastYear(year, month);
 
       const periodSelect = document.getElementById("waiterPeriod");
@@ -661,9 +685,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     reloadReports();
 
-    if (reportMonthInput) {
-      reportMonthInput.addEventListener("change", e => {
-        const val = e.target.value; // "YYYY-MM"
+    const reportMonthInput2 = document.getElementById("reportMonth");
+    if (reportMonthInput2) {
+      reportMonthInput2.addEventListener("change", e => {
+        const val = e.target.value;
         if (val) {
           const [yStr, mStr] = val.split("-");
           year = Number(yStr);
