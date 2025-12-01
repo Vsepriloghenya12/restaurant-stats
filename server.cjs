@@ -297,7 +297,7 @@ app.get("/api/waiters-export", (req, res) => {
 
 // ======================================
 // API: ЗАГРУЗКА МЕСЯЦА ОБЩЕЙ ВЫРУЧКИ ИЗ EXCEL
-// (добавлен разбор числовых дат)
+// (с поддержкой числовых дат)
 // ======================================
 
 app.post("/api/upload-month", upload.single("file"), (req, res) => {
@@ -411,7 +411,8 @@ app.post("/api/upload-month", upload.single("file"), (req, res) => {
 });
 
 // ======================================
-// ЗАГРУЗКА ДАННЫХ ПО ОФИЦИАНТАМ ИЗ EXCEL (УМНЫЙ ПАРСЕР + ЧИСЛОВЫЕ ДАТЫ)
+// ЗАГРУЗКА ДАННЫХ ПО ОФИЦИАНТАМ ИЗ EXCEL
+// УМНЫЙ ПАРСЕР + ЧИСЛОВЫЕ ДАТЫ + ПРОТЯГИВАНИЕ ДАТЫ/ИМЕНИ
 // ======================================
 
 app.post("/api/upload-waiters-month", upload.single("file"), (req, res) => {
@@ -440,7 +441,7 @@ app.post("/api/upload-waiters-month", upload.single("file"), (req, res) => {
     }
     const headers = Array.from(headersSet);
 
-    // Вспомогательная функция поиска колонки по подстрокам
+    // Поиск колонки по части названия
     function findKey(patterns) {
       const lowerPatterns = patterns.map(p => p.toLowerCase());
       for (const h of headers) {
@@ -476,42 +477,54 @@ app.post("/api/upload-waiters-month", upload.single("file"), (req, res) => {
     const byKey = new Map();
     const datesSet = new Set();
 
+    let lastIsoDate = null;
+    let lastWaiterName = null;
+
     for (const row of rows) {
-      const dateCell = row[dateKey];
-      const wCell = row[waiterKey];
+      const rawDate = row[dateKey];
+      const rawWaiter = row[waiterKey];
 
-      if (!dateCell || !wCell) continue;
-
+      // ---- дата: если пустая, используем предыдущую ----
       let isoDate = null;
-
-      if (dateCell instanceof Date) {
-        const d = dateCell;
-        isoDate = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-      } else if (typeof dateCell === "number") {
-        const d = xlsx.SSF.parse_date_code(dateCell);
-        if (d) {
-          isoDate = `${d.y}-${pad2(d.m)}-${pad2(d.d)}`;
-        }
-      } else {
-        const s = String(dateCell).split(",")[0].trim();
-        const parts = s.split(".");
-        if (parts.length === 3) {
-          const dd = pad2(parts[0]);
-          const mm = pad2(parts[1]);
-          const yyyy = parts[2];
-          isoDate = `${yyyy}-${mm}-${dd}`;
+      if (rawDate !== null && rawDate !== undefined && String(rawDate).trim() !== "") {
+        if (rawDate instanceof Date) {
+          const d = rawDate;
+          isoDate = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+        } else if (typeof rawDate === "number") {
+          const d = xlsx.SSF.parse_date_code(rawDate);
+          if (d) {
+            isoDate = `${d.y}-${pad2(d.m)}-${pad2(d.d)}`;
+          }
         } else {
-          const s2 = String(dateCell).substring(0, 10);
-          if (/^\d{4}-\d{2}-\d{2}$/.test(s2)) {
-            isoDate = s2;
+          const s = String(rawDate).split(",")[0].trim();
+          const parts = s.split(".");
+          if (parts.length === 3) {
+            const dd = pad2(parts[0]);
+            const mm = pad2(parts[1]);
+            const yyyy = parts[2];
+            isoDate = `${yyyy}-${mm}-${dd}`;
           } else {
-            continue;
+            const s2 = String(rawDate).substring(0, 10);
+            if (/^\d{4}-\d{2}-\d{2}$/.test(s2)) {
+              isoDate = s2;
+            }
           }
         }
+        lastIsoDate = isoDate;
+      } else {
+        isoDate = lastIsoDate;
       }
 
-      const waiterName = String(wCell).trim();
-      if (!waiterName) continue;
+      // ---- официант: если пустой, используем предыдущего ----
+      let waiterName = null;
+      if (rawWaiter !== null && rawWaiter !== undefined && String(rawWaiter).trim() !== "") {
+        waiterName = String(rawWaiter).trim();
+        lastWaiterName = waiterName;
+      } else {
+        waiterName = lastWaiterName;
+      }
+
+      if (!isoDate || !waiterName) continue;
 
       const revenue = revKey    ? (Number(row[revKey])    || 0) : 0;
       const guests  = guestsKey ? (Number(row[guestsKey]) || 0) : 0;
@@ -557,6 +570,7 @@ app.post("/api/upload-waiters-month", upload.single("file"), (req, res) => {
         );
     }
 
+    // Стираем старые записи за все даты из файла
     const deleteStmt = db.prepare(`DELETE FROM waiters_stats WHERE date = ?`);
     for (const d of datesSet) {
       deleteStmt.run(d);
