@@ -650,6 +650,7 @@ app.post("/api/upload-categories-month", upload.single("file"), (req, res) => {
         .send('<html><body><p>В файле нет данных</p><p><a href="/index.html">Назад</a></p></body></html>');
     }
 
+    // Собираем заголовки
     const headersSet = new Set();
     for (const r of rows) {
       Object.keys(r).forEach(k => headersSet.add(k));
@@ -667,11 +668,97 @@ app.post("/api/upload-categories-month", upload.single("file"), (req, res) => {
       return null;
     }
 
+    // --- Сначала пробуем "нормальный" формат: дата | категория | выручка по строкам ---
     const dateKey = findKey(["операц", "дата", "date"]);
     const catKey  = findKey(["категор", "подраздел", "отдел", "тип", "группа"]);
     const revKey  = findKey(["выручк", "продаж", "сумма"]);
 
+    // Если не нашли, пробуем формат "2 колонки: категория + сумма за месяц"
     if (!dateKey || !catKey || !revKey) {
+      // Ожидаем ровно 2 колонки:
+      // 1-я: названия категорий (Кухня, Бар, ...)
+      // 2-я: заголовок вида "1.11.2025 — 30.11.2025", под ним суммы
+      if (headers.length === 2) {
+        const colCat = headers[0];
+        const colVal = headers[1];
+
+        const periodHeader = String(colVal);
+        // Ищем первую дату в заголовке, чтобы понять месяц
+        const dm = periodHeader.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+        if (!dm) {
+          // Не смогли распарсить дату из заголовка периода
+          return res
+            .status(400)
+            .send(
+              `<html><body>
+                 <p>Не удалось определить период из заголовка: "${periodHeader}".</p>
+                 <p>Найденные заголовки:</p>
+                 <pre>${headers.join("\n")}</pre>
+                 <p><a href="/index.html">Назад</a></p>
+               </body></html>`
+            );
+        }
+
+        const day = parseInt(dm[1], 10);
+        const month = parseInt(dm[2], 10);
+        const year = parseInt(dm[3], 10);
+
+        // Фиксированная дата для этого месяца (например, 2025-11-01)
+        const fixedDate = `${year}-${pad2(month)}-01`;
+
+        const byKey = new Map(); // category -> revenue
+        const datesSet = new Set([fixedDate]);
+
+        for (const row of rows) {
+          const catRaw = row[colCat];
+          const valRaw = row[colVal];
+
+          const category = catRaw ? String(catRaw).trim() : "";
+          const revenue = Number(valRaw) || 0;
+
+          if (!category || !revenue) continue;
+
+          const prev = byKey.get(category) || { date: fixedDate, category, revenue: 0 };
+          prev.revenue += revenue;
+          byKey.set(category, prev);
+        }
+
+        if (byKey.size === 0) {
+          return res
+            .status(400)
+            .send(
+              `<html><body>
+                 <p>Не удалось извлечь ни одной строки по категориям из формата "категория + сумма за период".</p>
+                 <p><a href="/index.html">Назад</a></p>
+               </body></html>`
+            );
+        }
+
+        // Стираем старые записи за этот месяц (все даты с тем же годом-месяцем)
+        const monthPrefix = `${year}-${pad2(month)}`;
+        db.prepare(`DELETE FROM category_stats WHERE date LIKE ?`).run(`${monthPrefix}%`);
+
+        const insertStmt = db.prepare(`
+          INSERT INTO category_stats (date, category, revenue)
+          VALUES (?, ?, ?)
+        `);
+
+        let importedRows = 0;
+        for (const [, row] of byKey) {
+          insertStmt.run(row.date, row.category, row.revenue);
+          importedRows++;
+        }
+
+        return res.send(
+          `<html><body>
+             <p>Импортировано записей по категориям (месячный формат): <b>${importedRows}</b></p>
+             <p>Месяц: <b>${pad2(month)}.${year}</b></p>
+             <p><a href="/index.html">Назад</a></p>
+           </body></html>`
+        );
+      }
+
+      // Если сюда дошли — не "нормальный" формат и не 2-колоночный
       return res
         .status(400)
         .send(
@@ -683,6 +770,8 @@ app.post("/api/upload-categories-month", upload.single("file"), (req, res) => {
            </body></html>`
         );
     }
+
+    // ======= СТАРЫЙ РЕЖИМ: построчно дата | категория | выручка =======
 
     const byKey = new Map(); // date|category -> revenue
     const datesSet = new Set();
