@@ -200,7 +200,7 @@ app.get("/api/month-stats", (req, res) => {
 
 // ======================================
 // API: метрики официантов по диапазону
-//  (с optional фильтром по waiter)
+// (с optional фильтром по waiter)
 // ======================================
 
 app.get("/api/waiters", (req, res) => {
@@ -297,14 +297,14 @@ app.get("/api/waiters-export", (req, res) => {
 });
 
 // ======================================
-// API: ЗАГРУЗКА МЕСЯЦА ИЗ EXCEL
+// API: ЗАГРУЗКА МЕСЯЦА ОБЩЕЙ ВЫРУЧКИ ИЗ EXCEL
 // ======================================
 
 app.post("/api/upload-month", upload.single("file"), (req, res) => {
   if (!req.file) {
     return res
       .status(400)
-      .send("<html><body><p>Файл не получен</p><p><a href=\"/index.html\">Назад</a></p></body></html>");
+      .send('<html><body><p>Файл не получен</p><p><a href="/index.html">Назад</a></p></body></html>');
   }
 
   try {
@@ -383,7 +383,7 @@ app.post("/api/upload-month", upload.single("file"), (req, res) => {
 
     res.send(
       `<html><body>
-         <p>Импортировано дней: <b>${importedDays}</b></p>
+         <p>Импортировано дней (общая выручка): <b>${importedDays}</b></p>
          <p><a href="/index.html">Назад</a></p>
        </body></html>`
     );
@@ -394,6 +394,144 @@ app.post("/api/upload-month", upload.single("file"), (req, res) => {
       .send(
         `<html><body>
            <p>Ошибка импорта: ${e.message}</p>
+           <p><a href="/index.html">Назад</a></p>
+         </body></html>`
+      );
+  }
+});
+
+// ======================================
+// НОВОЕ: ЗАГРУЗКА ДАННЫХ ПО ОФИЦИАНТАМ ИЗ EXCEL
+// ======================================
+
+app.post("/api/upload-waiters-month", upload.single("file"), (req, res) => {
+  if (!req.file) {
+    return res
+      .status(400)
+      .send('<html><body><p>Файл не получен</p><p><a href="/index.html">Назад</a></p></body></html>');
+  }
+
+  try {
+    const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const rows = xlsx.utils.sheet_to_json(sheet, { defval: null });
+
+    // key = date|waiter
+    const byKey = new Map();
+    const datesSet = new Set();
+
+    for (const row of rows) {
+      // 1) Дата
+      let dateCell =
+        row["Операционный день"] ??
+        row["Дата"] ??
+        row["date"];
+      if (!dateCell) continue;
+
+      let isoDate = null;
+      if (dateCell instanceof Date) {
+        const d = dateCell;
+        isoDate = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+      } else {
+        const s = String(dateCell).split(",")[0].trim();
+        const parts = s.split(".");
+        if (parts.length === 3) {
+          const dd = pad2(parts[0]);
+          const mm = pad2(parts[1]);
+          const yyyy = parts[2];
+          isoDate = `${yyyy}-${mm}-${dd}`;
+        } else {
+          continue;
+        }
+      }
+
+      // 2) Официант
+      const waiter =
+        row["Официант"] ??
+        row["официант"] ??
+        row["Сотрудник"] ??
+        row["ФИО"] ??
+        row["Имя"] ??
+        row["Name"];
+
+      if (!waiter || String(waiter).trim() === "") continue;
+      const waiterName = String(waiter).trim();
+
+      // 3) Метрики
+      const revenue =
+        Number(row["Выручка официанта"] ??
+               row["Выручка"] ??
+               row["Продажи"] ??
+               0) || 0;
+      const guests =
+        Number(row["Гостей"] ??
+               row["Гости"] ??
+               0) || 0;
+      const checks =
+        Number(row["Чеков"] ??
+               row["Чеки"] ??
+               0) || 0;
+      const dishes =
+        Number(row["Блюда"] ??
+               row["БКВ"] ??
+               row["Блюд"] ??
+               0) || 0;
+
+      const key = `${isoDate}|${waiterName}`;
+      const prev = byKey.get(key) || {
+        date: isoDate,
+        waiter: waiterName,
+        revenue: 0,
+        guests: 0,
+        checks: 0,
+        dishes: 0
+      };
+
+      prev.revenue += revenue;
+      prev.guests += guests;
+      prev.checks += checks;
+      prev.dishes += dishes;
+
+      byKey.set(key, prev);
+      datesSet.add(isoDate);
+    }
+
+    // Удаляем старые записи официантов за все даты из файла
+    const deleteStmt = db.prepare(`DELETE FROM waiters_stats WHERE date = ?`);
+    for (const d of datesSet) {
+      deleteStmt.run(d);
+    }
+
+    const insertWaiterStmt = db.prepare(`
+      INSERT OR IGNORE INTO waiters_list (name) VALUES (?)
+    `);
+    const insertStatsStmt = db.prepare(`
+      INSERT INTO waiters_stats (date, waiter, revenue, guests, checks, dishes)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+
+    let importedRows = 0;
+    for (const [, row] of byKey) {
+      insertWaiterStmt.run(row.waiter);
+      insertStatsStmt.run(row.date, row.waiter, row.revenue, row.guests, row.checks, row.dishes);
+      importedRows++;
+    }
+
+    res.send(
+      `<html><body>
+         <p>Импортировано записей по официантам: <b>${importedRows}</b></p>
+         <p>Затронуто дат: <b>${datesSet.size}</b></p>
+         <p><a href="/index.html">Назад</a></p>
+       </body></html>`
+    );
+  } catch (e) {
+    console.error(e);
+    res
+      .status(500)
+      .send(
+        `<html><body>
+           <p>Ошибка импорта по официантам: ${e.message}</p>
            <p><a href="/index.html">Назад</a></p>
          </body></html>`
       );
