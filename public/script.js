@@ -323,58 +323,48 @@ async function loadWeekdayStats(year, month) {
   document.getElementById("weekdayStats").innerHTML = html;
 }
 
-// ---------- ДОЛИ КАТЕГОРИЙ ----------
+// ---------- ДОЛИ КАТЕГОРИЙ (ТОЛЬКО ТЕКУЩИЙ ГОД) ----------
 
 async function loadCategoryShares(year, month) {
-  const resThis = await fetch(`/api/categories-month?year=${year}&month=${month}`);
-  const thisRows = await resThis.json();
+  // данные по категориям за месяц
+  const resCats = await fetch(`/api/categories-month?year=${year}&month=${month}`);
+  const catsRows = await resCats.json();
 
-  const resPrev = await fetch(`/api/categories-month?year=${year - 1}&month=${month}`);
-  const prevRows = await resPrev.json();
+  // общая выручка месяца из daily_stats
+  const resMonth = await fetch(`/api/month-stats?year=${year}&month=${month}`);
+  const monthRows = await resMonth.json();
+  const totalRevenue = monthRows.reduce((s, r) => s + (r.revenue || 0), 0);
 
-  const totalThis = thisRows.reduce((s, r) => s + (r.total_revenue || 0), 0);
-  const totalPrev = prevRows.reduce((s, r) => s + (r.total_revenue || 0), 0);
+  let html = "";
 
-  const mapPrev = new Map();
-  prevRows.forEach(r => mapPrev.set(r.category, r.total_revenue || 0));
-
-  const catsSet = new Set();
-  thisRows.forEach(r => catsSet.add(r.category));
-  prevRows.forEach(r => catsSet.add(r.category));
-
-  let html = `
-    <table>
-      <tr>
-        <th>Категория</th>
-        <th>${year} выручка</th>
-        <th>${year} доля</th>
-        <th>${year - 1} выручка</th>
-        <th>${year - 1} доля</th>
-        <th>Δ доли (п.п.)</th>
-      </tr>
-  `;
-
-  const cats = Array.from(catsSet);
-  cats.forEach(cat => {
-    const revThis = (thisRows.find(r => r.category === cat)?.total_revenue) || 0;
-    const revPrev = mapPrev.get(cat) || 0;
-    const shareThis = totalThis ? (revThis / totalThis) * 100 : 0;
-    const sharePrev = totalPrev ? (revPrev / totalPrev) * 100 : 0;
-    const diff = shareThis - sharePrev;
-
+  if (!catsRows.length || !totalRevenue) {
+    html = "<p>Нет данных по категориям или общей выручке за выбранный месяц.</p>";
+  } else {
     html += `
-      <tr>
-        <td>${cat}</td>
-        <td>${revThis.toLocaleString()} ₽</td>
-        <td>${shareThis.toFixed(1)}%</td>
-        <td>${revPrev.toLocaleString()} ₽</td>
-        <td>${sharePrev.toFixed(1)}%</td>
-        <td>${diff.toFixed(1)} п.п.</td>
-      </tr>
+      <p>Общая выручка месяца: <b>${totalRevenue.toLocaleString()} ₽</b></p>
+      <table>
+        <tr>
+          <th>Категория</th>
+          <th>Выручка</th>
+          <th>Доля от общей выручки</th>
+        </tr>
     `;
-  });
 
-  html += "</table>";
+    catsRows.forEach(r => {
+      const rev = r.total_revenue || 0;
+      const share = totalRevenue ? (rev / totalRevenue) * 100 : 0;
+      html += `
+        <tr>
+          <td>${r.category}</td>
+          <td>${rev.toLocaleString()} ₽</td>
+          <td>${share.toFixed(1)}%</td>
+        </tr>
+      `;
+    });
+
+    html += "</table>";
+  }
+
   document.getElementById("categoryShares").innerHTML = html;
 }
 
